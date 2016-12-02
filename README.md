@@ -1,7 +1,9 @@
 SocketCluster Phaser Sample
 ======
 
-This is a demo using SocketCluster and Phasor.
+This is a demo using SocketCluster and Phaser.
+
+[![sc-phaser-sample](https://raw.github.com/SocketCluster/sc-phaser-sample/master/public/img/sc-phaser-sample.png)]()
 
 To run on your machine, you need to have Node.js `v6.0.0` or higher installed.
 Then you can either clone this repo with Git using the command:
