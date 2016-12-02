@@ -1,2 +1,4 @@
-# sc-phaser-sample
-Basic multiplayer demo built using SocketCluster and Phaser
+SocketCluster Sample App
+======
+
+This is a sample SocketCluster app.

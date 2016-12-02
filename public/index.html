@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Hello Phaser!</title>
+    <link rel="icon" type="image/png" href="/favicon.ico">
+    <script type="text/javascript" src="/socketcluster.js"></script>
+    <script src="/phaser.min.js"></script>
+    <style>
+      html {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        color: #666666;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="text/javascript">
+
+      var socket = socketCluster.connect();
+
+      window.onload = function () {
+
+        //  Note that this html file is set to pull down Phaser from our public/ directory.
+        //  Although it will work fine with this tutorial, it's almost certainly not the most current version.
+        //  Be sure to replace it with an updated version before you start experimenting with adding your own code.
+
+        var game = new Phaser.Game('100', '100', Phaser.AUTO, '', {preload: preload, create: create, update: update});
+        var player;
+        var moveSpeed = 20;
+
+        function getRandomColor(min) {
+          var max = 255;
+          var randomness = max - min;
+          return min + Math.round(Math.random() * randomness);
+        }
+
+        function getRandomPosition(spriteWidth, spriteHeight) {
+          var halfSpriteWidth = spriteWidth / 2;
+          var halfSpriteHeight = spriteHeight / 2;
+          var widthRandomness = game.world.width - spriteWidth;
+          var heightRandomness = game.world.height - spriteHeight;
+          return {
+            x: Math.round(halfSpriteWidth + widthRandomness * Math.random()),
+            y: Math.round(halfSpriteHeight + heightRandomness * Math.random())
+          };
+        }
+
+        function preload() {
+          keys = {
+            up: game.input.keyboard.addKey(Phaser.Keyboard.UP),
+            down: game.input.keyboard.addKey(Phaser.Keyboard.DOWN),
+            right: game.input.keyboard.addKey(Phaser.Keyboard.RIGHT),
+            left: game.input.keyboard.addKey(Phaser.Keyboard.LEFT)
+          };
+        }
+
+        var users = {};
+
+        function moveUser(playerName, x, y) {
+          var user = users[playerName];
+          user.x = user.sprite.x = x;
+          user.y = user.sprite.y = y;
+          user.label.alignTo(user.sprite, Phaser.BOTTOM_CENTER, 0, 10);
+        }
+
+        function removeUserSprite(userData) {
+          var user = users[userData.name];
+          if (user) {
+            user.sprite.destroy();
+            user.label.destroy();
+          }
+        }
+
+        function updateUserSprite(userData) {
+          var user = users[userData.name];
+          if (user) {
+            moveUser(userData.name, userData.x, userData.y);
+          } else {
+            users[userData.name] = user = {};
+            user.name = userData.name;
+
+            var textStyle = {
+              font: '16px Arial',
+              fill: '#ffffff',
+              align: 'center'
+            };
+
+            user.label = game.add.text(0, 0, user.name, textStyle);
+            user.label.anchor.set(0.5);
+
+            var graphics = new Phaser.Graphics(game);
+
+            graphics.beginFill(userData.color);
+            graphics.drawCircle(0, 0, 40);
+            graphics.endFill();
+            var texture = graphics.generateTexture();
+
+            user.color = userData.color;
+            user.sprite = game.add.sprite(0, 0, texture);
+            user.sprite.anchor.setTo(0.5);
+
+            user.width = user.sprite.width;
+            user.height = user.sprite.height;
+
+            moveUser(userData.name, userData.x, userData.y);
+          }
+          return user;
+        }
+
+        function create() {
+          // Generate a random name for the user.
+          var playerName = 'user-' + Math.round(Math.random() * 10000);
+          var startingPos = getRandomPosition(40, 40);
+          var playerColor = Phaser.Color.getColor(getRandomColor(100), getRandomColor(100), getRandomColor(100));
+          player = updateUserSprite({
+            name: playerName,
+            color: playerColor,
+            x: startingPos.x,
+            y: startingPos.y
+          });
+
+          var getUserPresenceChannelName = function (username) {
+            return 'user/' + username + '/presence-notification';
+          };
+
+          // Setup a channel to allow other existing users to tell us about their presence (in case they joined before us).
+          socket.subscribe(getUserPresenceChannelName(playerName)).watch(function (userData) {
+            updateUserSprite(userData);
+          });
+
+          socket.subscribe('player-join').watch(function (userData) {
+            if (player && userData.name != player.name) {
+              updateUserSprite(userData);
+              // Tell the newly joined user about our presence by publishing to their presence-notification channel.
+              socket.publish(getUserPresenceChannelName(userData.name), {
+                name: player.name,
+                color: player.color,
+                x: player.x,
+                y: player.y
+              });
+            }
+          });
+
+          socket.subscribe('player-leave').watch(function (userData) {
+            if (player && userData.name != player.name) {
+              removeUserSprite(userData);
+            }
+          });
+
+          socket.subscribe('player-positions').watch(function (userDataList) {
+            if (player) {
+              userDataList.forEach(function (userData) {
+                if (userData.name != player.name) {
+                  updateUserSprite(userData);
+                }
+              });
+            }
+          });
+
+          socket.emit('join', {
+            name: player.name,
+            color: player.color,
+            x: player.x,
+            y: player.y,
+          });
+
+          function sendPlayerMove() {
+            var playerPositionData = {
+              x: player.x,
+              y: player.y
+            };
+            socket.emit('move', playerPositionData);
+          }
+
+          var playerOldPos = {
+            x: Infinity,
+            y: Infinity
+          };
+          setInterval(function () {
+            if (Math.abs(playerOldPos.x - player.x) > 0 || Math.abs(playerOldPos.y - player.y) > 0) {
+              sendPlayerMove();
+            }
+            playerOldPos.x = player.x;
+            playerOldPos.y = player.y;
+          }, 10);
+        }
+
+        function update() {
+          var newX = player.x;
+          var newY = player.y;
+          if (keys.up.isDown) {
+            newY -= moveSpeed;
+          }
+          if (keys.down.isDown) {
+            newY += moveSpeed;
+          }
+          if (keys.right.isDown) {
+            newX += moveSpeed;
+          }
+          if (keys.left.isDown) {
+            newX -= moveSpeed;
+          }
+          moveUser(player.name, newX, newY);
+        }
+      };
+    </script>
+  </body>
+</html>
