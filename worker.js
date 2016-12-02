@@ -27,14 +27,6 @@ module.exports.run = function (worker) {
 
   httpServer.on('request', app);
 
-  // TODO
-  // scServer.addMiddleware(scServer.MIDDLEWARE_PUBLISH_IN, function (req, next) {
-  //   console.log('MIDDLEWARE_PUBLISH_IN');
-  //   var err = new Error('This is a complete failure');
-  //   err.name = 'FailError'
-  //   next(err);
-  // });
-
   var positionFlushTimeout = null;
   var playerPositionsBuffer = [];
   var flushPlayerPositions = function () {
