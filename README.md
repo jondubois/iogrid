@@ -47,3 +47,5 @@ You may want to use https://github.com/SocketCluster/sc-codec-min-bin or make yo
 If you want to run the server on port 80, you'll need to run the SocketCluster server with `sudo node server -p 80`.
 
 For more info about SocketCluster, visit http://socketcluster.io/.
+
+If you want to find out more about authentication and authorization, you may want to look into SC middleware: http://socketcluster.io/#!/docs/middleware-and-authorization
