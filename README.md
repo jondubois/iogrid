@@ -1,4 +1,4 @@
-SC Phaser Sample
+SocketCluster Phaser Sample
 ======
 
 This is a demo using SocketCluster and Phasor.
