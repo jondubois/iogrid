@@ -24,7 +24,7 @@ Then (while still inside the `sc-phaser-sample` directory) you can launch the So
 node server
 ```
 
-Now to see the 'game', navigate to http://localhost:8000 in a browser - You should see a single colored circle which you can move around
+To run the demo, navigate to http://localhost:8000 in a browser - You should see a single colored circle which you can move around
 using the arrow keys.
 
 To test the multi-player functionality from your localhost:
