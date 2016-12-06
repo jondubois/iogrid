@@ -40,7 +40,7 @@ To test the multi-player functionality from your localhost:
 Open up another browser window/tab to `http://localhost:8000` and put it side-by-side with the first window/tab - You should now
 have two colored circles - Each one can be controlled from a different tab.
 
-Note that while this demo demonstrates a few important optimizations, it is still not as optimized as it can be.
+Note that while this demo demonstrates a few important optimizations, it is still not as optimized as it can be and it's not cheat-proof.
 For production usage, among other things, you may want to setup a codec to convert your messages to binary packets when they are sent over the wire.
 You may want to use https://github.com/SocketCluster/sc-codec-min-bin or make your own.
 
