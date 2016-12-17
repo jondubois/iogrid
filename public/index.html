@@ -191,21 +191,28 @@
         }
 
         function update() {
+          var didAction = false;
           var playerOp = {};
           if (keys.up.isDown) {
             playerOp.u = 1;
+            didAction = true;
           }
           if (keys.down.isDown) {
             playerOp.d = 1;
+            didAction = true;
           }
           if (keys.right.isDown) {
             playerOp.r = 1;
+            didAction = true;
           }
           if (keys.left.isDown) {
             playerOp.l = 1;
+            didAction = true;
           }
-          // Send the player operations for the server to process.
-          socket.emit('action', playerOp);
+          if (didAction) {
+            // Send the player operations for the server to process.
+            socket.emit('action', playerOp);
+          }
         }
 
         function render() {
