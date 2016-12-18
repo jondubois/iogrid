@@ -36,7 +36,6 @@
         var WORLD_HEIGHT;
         // 1 means no smoothing. 0.1 is relatively smooth.
         var CAMERA_SMOOTHING = 1;
-        var MAX_POSITION_BUFFER_SIZE = 10;
         var BACKGROUND_TEXTURE = 'img/background-texture.png';
 
         socket.emit('getWorldInfo', null, function (err, data) {
@@ -46,7 +45,7 @@
           game = new Phaser.Game('100', '100', Phaser.AUTO, '', {
             preload: preload,
             create: create,
-            render: render,
+            // render: render, // For debugging: Uncomment to display frame rate.
             update: update
           });
         });
@@ -66,13 +65,6 @@
           };
 
           game.load.image('background', BACKGROUND_TEXTURE);
-        }
-
-        function bufferUserPosition(userData) {
-          var user = users[userData.name];
-          if (user) {
-            user.positionBuffer.push(userData);
-          }
         }
 
         function moveUser(playerName, x, y) {
@@ -95,7 +87,6 @@
         function createUserSprite(userData) {
           users[userData.name] = user = {};
           user.name = userData.name;
-          user.positionBuffer = [];
 
           var textStyle = {
             font: '16px Arial',
@@ -121,6 +112,7 @@
           user.height = user.sprite.height;
 
           moveUser(userData.name, userData.x, userData.y);
+
           if (userData.name == playerName) {
             game.camera.setSize(window.innerWidth, window.innerHeight);
             game.camera.follow(user.sprite, null, CAMERA_SMOOTHING, CAMERA_SMOOTHING);
@@ -131,17 +123,8 @@
           var user = users[userData.name];
           if (user) {
             moveUser(userData.name, userData.x, userData.y);
-          }
-        }
-
-        function shiftPositionBuffer(user) {
-          if (user.positionBuffer.length) {
-            // If buffer piled up too quickly, we will shift it down to the max size.
-            while (user.positionBuffer.length > MAX_POSITION_BUFFER_SIZE) {
-              user.positionBuffer.shift();
-            }
-            var userData = user.positionBuffer.shift();
-            updateUserSprite(userData);
+          } else {
+            createUserSprite(userData);
           }
         }
 
@@ -154,34 +137,12 @@
           playerName = 'user-' + Math.round(Math.random() * 10000);
           var playerColor = Phaser.Color.getColor(getRandomColor(100), getRandomColor(100), getRandomColor(100));
 
-          var getUserPresenceChannelName = function (username) {
-            return 'user/' + username + '/presence-notification';
-          };
-
-          // Setup a channel to allow other existing users to tell us about their presence (in case they joined before us).
-          socket.subscribe(getUserPresenceChannelName(playerName)).watch(function (userData) {
-            createUserSprite(userData);
-          });
-
-          socket.subscribe('player-join').watch(function (userData) {
-            createUserSprite(userData);
-            if (userData.name != playerName) {
-              // Tell new players about our existence.
-              socket.emit('ack-player-join', {
-                newPlayer: userData.name,
-                existingPlayer: playerName
-              });
-            }
-          });
-
           socket.subscribe('player-leave').watch(function (userData) {
             removeUserSprite(userData);
           });
 
           socket.subscribe('player-positions').watch(function (userDataList) {
-            // Instead of rendering player positions immediately, buffer them - Then we will
-            // shift them out of this buffer gradually.
-            userDataList.forEach(bufferUserPosition);
+            userDataList.forEach(updateUserSprite);
           });
 
           socket.emit('join', {
@@ -216,14 +177,7 @@
         }
 
         function render() {
-          // Render use positions by progressively shifting the position buffer.
-          for (var i in users) {
-            if (users.hasOwnProperty(i)) {
-              shiftPositionBuffer(users[i]);
-            }
-          }
-          // For debugging: Uncomment to display frame rate.
-          // game.debug.text(game.time.fps, 2, 14, "#00FF00");
+          game.debug.text(game.time.fps, 2, 14, "#00FF00");
         }
       };
     </script>

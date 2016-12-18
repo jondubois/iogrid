@@ -8,6 +8,7 @@ var healthChecker = require('sc-framework-health-check');
 
 var WORLD_WIDTH = 2000;
 var WORLD_HEIGHT = 2000;
+var FRAME_INTERVAL = 20;
 var moveSpeed = 15;
 var playerWidth = 40;
 var playerHeight = 40;
@@ -47,15 +48,17 @@ module.exports.run = function (worker) {
 
   httpServer.on('request', app);
 
-  var positionFlushTimeout = null;
-  var playerPositionsBuffer = [];
   var flushPlayerPositions = function () {
-    if (playerPositionsBuffer.length) {
-      scServer.exchange.publish('player-positions', playerPositionsBuffer);
-      playerPositionsBuffer = [];
+    var playerPositions = [];
+    for (var i in users) {
+      if (users.hasOwnProperty(i)) {
+        playerPositions.push(users[i]);
+      }
     }
-    positionFlushTimeout = null;
+    scServer.exchange.publish('player-positions', playerPositions);
   };
+
+  setInterval(flushPlayerPositions, FRAME_INTERVAL);
 
   function updatePlayerState(player, playerOp) {
     var wasStateUpdated = false;
@@ -115,18 +118,6 @@ module.exports.run = function (worker) {
       });
     });
 
-    socket.on('ack-player-join', function (data) {
-      var playerData = users[data.existingPlayer];
-      if (playerData) {
-        worker.exchange.publish(getUserPresenceChannelName(data.newPlayer), {
-          name: playerData.name,
-          color: playerData.color,
-          x: playerData.x,
-          y: playerData.y
-        });
-      }
-    });
-
     socket.on('join', function (playerOptions, respond) {
       var startingPos = getRandomPosition(playerWidth, playerHeight);
       socket.player = {
@@ -139,28 +130,14 @@ module.exports.run = function (worker) {
       };
 
       users[playerOptions.name] = socket.player;
-
-      scServer.exchange.publish('player-join', socket.player);
     });
+
     socket.on('action', function (playerOp) {
       if (socket.player) {
         var wasStateUpdated = updatePlayerState(socket.player, playerOp);
-        // We will batch together multiple position changes within a 20 millisecond timeframe
-        // and send them all off in a single publish action for performance reasons.
-        // It's cheaper to publish 1 long 100 KB message than 100 short 1 KB messages.
-        if (wasStateUpdated) {
-          playerPositionsBuffer.push({
-            name: socket.player.name,
-            color: socket.player.color,
-            x: socket.player.x,
-            y: socket.player.y
-          });
-        }
-        if (!positionFlushTimeout) {
-          positionFlushTimeout = setTimeout(flushPlayerPositions, 20);
-        }
       }
     });
+
     socket.on('disconnect', function () {
       if (socket.player) {
         var userName = socket.player.name;
