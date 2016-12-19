@@ -5,6 +5,7 @@
     <link rel="icon" type="image/png" href="/favicon.ico">
     <script type="text/javascript" src="/socketcluster.js"></script>
     <script src="/phaser.min.js"></script>
+    <script src="/rbush.min.js"></script>
     <style>
       html {
         height: 100%;
@@ -30,10 +31,15 @@
         //  Be sure to replace it with an updated version before you start experimenting with adding your own code.
 
         var game, playerName;
-        var users = {};
+        users = {};
+        coins = {};
+        // For collision detection
+        var coinTree = rbush();
 
         var WORLD_WIDTH;
         var WORLD_HEIGHT;
+        var SERVER_WORKER_ID;
+
         // 1 means no smoothing. 0.1 is relatively smooth.
         var CAMERA_SMOOTHING = 1;
         var BACKGROUND_TEXTURE = 'img/background-texture.png';
@@ -41,6 +47,7 @@
         socket.emit('getWorldInfo', null, function (err, data) {
           WORLD_WIDTH = data.width;
           WORLD_HEIGHT = data.height;
+          SERVER_WORKER_ID = data.serverWorkerId;
 
           game = new Phaser.Game('100', '100', Phaser.AUTO, '', {
             preload: preload,
@@ -67,6 +74,41 @@
           game.load.image('background', BACKGROUND_TEXTURE);
         }
 
+        function reportApproxCoinCollisionsToServer(user) {
+          // We account for double the area to account for server latency
+          var collisionHalfWidth = user.width;
+          var collisionHalfHeight = user.height;
+
+          var coinNodesHits = coinTree.search({
+            minX: user.x - collisionHalfWidth,
+            minY: user.y - collisionHalfHeight,
+            maxX: user.x + collisionHalfWidth,
+            maxY: user.y + collisionHalfHeight
+          });
+
+          var coinsHitList = [];
+
+          coinNodesHits.forEach(function (coinNode) {
+            var curCoin = coins[coinNode.id];
+            if (curCoin) {
+              coinsHitList.push({
+                id: curCoin.id,
+                swid: curCoin.swid,
+                x: curCoin.x,
+                y: curCoin.y,
+                r: curCoin.r
+              });
+            }
+          });
+
+          if (coinsHitList.length) {
+            socket.publish('external/coin-hit-check/' + SERVER_WORKER_ID, {
+              username: user.name,
+              coins: coinsHitList
+            });
+          }
+        }
+
         function moveUser(playerName, x, y) {
           var user = users[playerName];
           user.x = x;
@@ -74,6 +116,10 @@
           user.sprite.x = user.x;
           user.sprite.y = user.y;
           user.label.alignTo(user.sprite, Phaser.BOTTOM_CENTER, 0, 10);
+          user.label.bringToTop();
+          user.sprite.bringToTop();
+
+          reportApproxCoinCollisionsToServer(user);
         }
 
         function removeUserSprite(userData) {
@@ -84,8 +130,23 @@
           }
         }
 
+        function createCircleSprite(options) {
+          var graphics = new Phaser.Graphics(game);
+
+          graphics.beginFill(options.color);
+          graphics.drawCircle(0, 0, options.diameter);
+          graphics.endFill();
+          var texture = graphics.generateTexture();
+
+          var sprite = game.add.sprite(0, 0, texture);
+          sprite.anchor.setTo(0.5);
+
+          return sprite;
+        }
+
         function createUserSprite(userData) {
-          users[userData.name] = user = {};
+          var user = {};
+          users[userData.name] = user;
           user.name = userData.name;
 
           var textStyle = {
@@ -97,16 +158,14 @@
           user.label = game.add.text(0, 0, user.name, textStyle);
           user.label.anchor.set(0.5);
 
-          var graphics = new Phaser.Graphics(game);
-
-          graphics.beginFill(userData.color);
-          graphics.drawCircle(0, 0, 40);
-          graphics.endFill();
-          var texture = graphics.generateTexture();
+          var circle = createCircleSprite({
+            diameter: userData.width,
+            color: userData.color
+          });
 
           user.color = userData.color;
-          user.sprite = game.add.sprite(0, 0, texture);
-          user.sprite.anchor.setTo(0.5);
+          user.score = userData.score;
+          user.sprite = circle;
 
           user.width = user.sprite.width;
           user.height = user.sprite.height;
@@ -119,13 +178,39 @@
           }
         }
 
-        function updateUserSprite(userData) {
+        function updateUser(userData) {
           var user = users[userData.name];
           if (user) {
+            user.score = userData.score;
             moveUser(userData.name, userData.x, userData.y);
           } else {
             createUserSprite(userData);
           }
+        }
+
+        function renderCoins(coinDataList) {
+          var newCoinsLookup = {};
+          coinDataList.forEach(function (coinData) {
+            if (!coins[coinData.id]) {
+              newCoinsLookup[coinData.id] = 1;
+              var coin = coinData;
+              coins[coinData.id] = coin;
+              coin.sprite = createCircleSprite({
+                diameter: coinData.r * 2,
+                color: Phaser.Color.hexToRGB('#FFBB00')
+              });
+              coin.sprite.x = coinData.x;
+              coin.sprite.y = coinData.y;
+
+              coinTree.insert({
+                minX: coinData.x - coinData.r,
+                minY: coinData.y - coinData.r,
+                maxX: coinData.x + coinData.r,
+                maxY: coinData.y + coinData.r,
+                id: coinData.id
+              });
+            }
+          });
         }
 
         function create() {
@@ -141,8 +226,20 @@
             removeUserSprite(userData);
           });
 
-          socket.subscribe('player-positions').watch(function (userDataList) {
-            userDataList.forEach(updateUserSprite);
+          socket.subscribe('player-states').watch(function (userStateList) {
+            userStateList.forEach(updateUser);
+          });
+
+          socket.subscribe('coin-states').watch(renderCoins);
+
+          socket.subscribe('coins-taken').watch(function (coinIds) {
+            coinIds.forEach(function (coinId) {
+              var coinToRemove = coins[coinId];
+              if (coinToRemove) {
+                coinToRemove.sprite.destroy();
+                delete coins[coinId];
+              }
+            });
           });
 
           socket.emit('join', {

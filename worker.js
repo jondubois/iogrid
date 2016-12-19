@@ -5,13 +5,19 @@ var path = require('path');
 var express = require('express');
 var morgan = require('morgan');
 var healthChecker = require('sc-framework-health-check');
+var CoinManager = require('./coin-manager').CoinManager;
 
 var WORLD_WIDTH = 2000;
 var WORLD_HEIGHT = 2000;
-var FRAME_INTERVAL = 20;
-var moveSpeed = 15;
-var playerWidth = 40;
-var playerHeight = 40;
+
+var PLAYER_UPDATE_INTERVAL = 20;
+var PLAYER_MOVE_SPEED = 7;
+var PLAYER_WIDTH = 70;
+var PLAYER_HEIGHT = 70;
+
+var COIN_UPDATE_INTERVAL = 1000;
+var COIN_TAKEN_INTERVAL = 20;
+var COIN_DROP_INTERVAL = 1000;
 
 var users = {};
 
@@ -30,6 +36,7 @@ module.exports.run = function (worker) {
   console.log('   >> Worker PID:', process.pid);
 
   var environment = worker.options.environment;
+  var serverWorkerId = worker.options.instanceId + ':' + worker.id;
 
   var app = express();
 
@@ -48,35 +55,125 @@ module.exports.run = function (worker) {
 
   httpServer.on('request', app);
 
-  var flushPlayerPositions = function () {
-    var playerPositions = [];
+  scServer.addMiddleware(scServer.MIDDLEWARE_PUBLISH_IN, function (req, next) {
+    // Only allow clients to publish to channels whose names start with 'external/'
+    if (req.channel.indexOf('external/') == 0) {
+      next();
+    } else {
+      var err = new Error('Clients are not allowed to publish to the ' + req.channel + ' channel.');
+      err.name = 'ForbiddenPublishError';
+      next(err);
+    }
+  });
+
+  var coinManager = new CoinManager({
+    serverWorkerId: serverWorkerId,
+    worldWidth: WORLD_WIDTH,
+    worldHeight: WORLD_HEIGHT,
+    users: users
+  });
+
+  // Check if the user hit a coin.
+  // Because the user and the coin may potentially be hosted on different
+  // workers/servers, we add an additional step by publishing to a secondary internal channel.
+  // The first step involves checking that the user exists on this worker. The second step is used to
+  // verify that the coin exists (potentially on a different worker) and cross checks that the user did in
+  // fact hit the coin. This two-step check is necessary because we cannot trust position data from the client.
+  scServer.exchange.subscribe('external/coin-hit-check/' + serverWorkerId)
+  .watch(function (data) {
+    var curUser = users[data.username];
+    if (curUser && data.coins && data.coins.length) {
+      data.coins.forEach(function (coinData) {
+        scServer.exchange.publish('internal/coin-hit-check/' + coinData.swid, {
+          coinId: coinData.id,
+          user: curUser,
+          swid: serverWorkerId
+        });
+      });
+    }
+  });
+
+  scServer.exchange.subscribe('internal/player-increase-score/' + serverWorkerId)
+  .watch(function (data) {
+    var curUser = users[data.username];
+    if (curUser) {
+      curUser.score += data.value;
+    }
+  });
+
+  var removedCoinIds = [];
+
+  scServer.exchange.subscribe('internal/coin-hit-check/' + serverWorkerId)
+  .watch(function (data) {
+    var coinId = data.coinId;
+    var userState = data.user;
+    var swid = data.swid;
+    if (coinManager.doesUserTouchCoin(coinId, userState)) {
+      var coin = coinManager.coins[coinId];
+      coinManager.removeCoin(coinId);
+      removedCoinIds.push(coinId);
+      scServer.exchange.publish('internal/player-increase-score/' + swid, {
+        username: userState.name,
+        value: coin.v
+      });
+    }
+  });
+
+  var flushPlayerData = function () {
+    var playerStates = [];
     for (var i in users) {
       if (users.hasOwnProperty(i)) {
-        playerPositions.push(users[i]);
+        playerStates.push(users[i]);
       }
     }
-    scServer.exchange.publish('player-positions', playerPositions);
+    scServer.exchange.publish('player-states', playerStates);
   };
 
-  setInterval(flushPlayerPositions, FRAME_INTERVAL);
+  var flushCoinData = function () {
+    var coinPositions = [];
+    for (var j in coinManager.coins) {
+      if (coinManager.coins.hasOwnProperty(j)) {
+        coinPositions.push(coinManager.coins[j]);
+      }
+    }
+    scServer.exchange.publish('coin-states', coinPositions);
+  };
+
+  var flushCoinsTakenData = function () {
+    if (removedCoinIds.length) {
+      scServer.exchange.publish('coins-taken', removedCoinIds);
+      removedCoinIds = [];
+    }
+  };
+
+  setInterval(flushPlayerData, PLAYER_UPDATE_INTERVAL);
+  setInterval(flushCoinData, COIN_UPDATE_INTERVAL);
+  setInterval(flushCoinsTakenData, COIN_TAKEN_INTERVAL);
+
+  var dropCoin = function () {
+    // Drop a coin with value 1 and a radius of 12
+    coinManager.addCoin(1, 12);
+  };
+
+  setInterval(dropCoin, COIN_DROP_INTERVAL);
 
   function updatePlayerState(player, playerOp) {
     var wasStateUpdated = false;
 
     if (playerOp.u) {
-      player.y -= moveSpeed;
+      player.y -= PLAYER_MOVE_SPEED;
       wasStateUpdated = true;
     }
     if (playerOp.d) {
-      player.y += moveSpeed;
+      player.y += PLAYER_MOVE_SPEED;
       wasStateUpdated = true;
     }
     if (playerOp.r) {
-      player.x += moveSpeed;
+      player.x += PLAYER_MOVE_SPEED;
       wasStateUpdated = true;
     }
     if (playerOp.l) {
-      player.x -= moveSpeed;
+      player.x -= PLAYER_MOVE_SPEED;
       wasStateUpdated = true;
     }
 
@@ -114,19 +211,21 @@ module.exports.run = function (worker) {
       // The first argument to respond can optionally be an Error object.
       respond(null, {
         width: WORLD_WIDTH,
-        height: WORLD_HEIGHT
+        height: WORLD_HEIGHT,
+        serverWorkerId: serverWorkerId
       });
     });
 
-    socket.on('join', function (playerOptions, respond) {
-      var startingPos = getRandomPosition(playerWidth, playerHeight);
+    socket.on('join', function (playerOptions) {
+      var startingPos = getRandomPosition(PLAYER_WIDTH, PLAYER_HEIGHT);
       socket.player = {
         name: playerOptions.name,
         color: playerOptions.color,
         x: startingPos.x,
         y: startingPos.y,
-        width: playerWidth,
-        height: playerHeight
+        score: 0,
+        width: PLAYER_WIDTH,
+        height: PLAYER_HEIGHT
       };
 
       users[playerOptions.name] = socket.player;
@@ -140,11 +239,11 @@ module.exports.run = function (worker) {
 
     socket.on('disconnect', function () {
       if (socket.player) {
-        var userName = socket.player.name;
+        var username = socket.player.name;
         scServer.exchange.publish('player-leave', {
-          name: userName
+          name: username
         });
-        delete users[userName];
+        delete users[username];
       }
     });
   });

@@ -28,8 +28,6 @@ var options = {
   crashWorkerOnError: argv['auto-reboot'] != false,
   // If using nodemon, set this to true, and make sure that environment is 'dev'.
   killMasterOnSignal: false,
-  // Don't allow clients to publish data to channels - To prevent cheating.
-  allowClientPublish: false,
   environment: environment
 };
 
