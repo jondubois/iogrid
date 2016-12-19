@@ -203,14 +203,15 @@
               });
               coin.sprite.x = coinData.x;
               coin.sprite.y = coinData.y;
-
-              coinTree.insert({
+              coin.hitArea = {
                 minX: coinData.x - coinData.r,
                 minY: coinData.y - coinData.r,
                 maxX: coinData.x + coinData.r,
                 maxY: coinData.y + coinData.r,
                 id: coinData.id
-              });
+              };
+
+              coinTree.insert(coin.hitArea);
             }
           });
         }
@@ -238,6 +239,7 @@
             coinIds.forEach(function (coinId) {
               var coinToRemove = coins[coinId];
               if (coinToRemove) {
+                coinTree.remove(coinToRemove.hitArea);
                 coinToRemove.sprite.destroy();
                 delete coins[coinId];
               }
