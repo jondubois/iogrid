@@ -189,6 +189,8 @@
         }
 
         function renderCoins(coinDataList) {
+          // TODO: Remove coins which haven't been updated for a while.
+          // E.g. If a worker crashes.
           var newCoinsLookup = {};
           coinDataList.forEach(function (coinData) {
             if (!coins[coinData.id]) {
