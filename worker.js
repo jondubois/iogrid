@@ -18,6 +18,8 @@ var PLAYER_HEIGHT = 70;
 var COIN_UPDATE_INTERVAL = 1000;
 var COIN_TAKEN_INTERVAL = 20;
 var COIN_DROP_INTERVAL = 1000;
+var COIN_MAX_COUNT = 1000;
+var COIN_PLAYER_NO_DROP_RADIUS = 100;
 
 var users = {};
 
@@ -68,6 +70,8 @@ module.exports.run = function (worker) {
 
   var coinManager = new CoinManager({
     serverWorkerId: serverWorkerId,
+    maxCoinCount: COIN_MAX_COUNT,
+    playerNoDropRadius: COIN_PLAYER_NO_DROP_RADIUS,
     worldWidth: WORLD_WIDTH,
     worldHeight: WORLD_HEIGHT,
     users: users

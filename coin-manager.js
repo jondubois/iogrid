@@ -2,15 +2,15 @@ var uuid = require('uuid');
 var SAT = require('sat');
 
 var MAX_TRIALS = 100;
-var PLAYER_NO_DROP_RADIUS = 100;
 
-var MAX_COINS = 1000;
 var COIN_DEFAULT_RADIUS = 10;
 var COIN_DEFAULT_VALUE = 1;
 
 
 var CoinManager = function (options) {
   this.serverWorkerId = options.serverWorkerId;
+  this.playerNoDropRadius = options.playerNoDropRadius;
+  this.maxCoinCount = options.maxCoinCount;
   this.worldWidth = options.worldWidth;
   this.worldHeight = options.worldHeight;
 
@@ -25,7 +25,7 @@ CoinManager.prototype.generateRandomAvailablePosition = function (coinRadius) {
 
   for (var i in this.users) {
     var curUser = this.users[i];
-    circles.push(new SAT.Circle(new SAT.Vector(curUser.x, curUser.y), PLAYER_NO_DROP_RADIUS));
+    circles.push(new SAT.Circle(new SAT.Vector(curUser.x, curUser.y), this.playerNoDropRadius));
   }
 
   var position = null;
@@ -53,7 +53,7 @@ CoinManager.prototype.generateRandomAvailablePosition = function (coinRadius) {
 };
 
 CoinManager.prototype.addCoin = function (value, radius) {
-  if (this.coinCount < MAX_COINS) {
+  if (this.coinCount < this.maxCoinCount) {
     radius = radius || COIN_DEFAULT_RADIUS;
     var coinId = uuid.v4();
     var validPosition = this.generateRandomAvailablePosition(radius);
