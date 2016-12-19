@@ -6,6 +6,7 @@ var express = require('express');
 var morgan = require('morgan');
 var healthChecker = require('sc-framework-health-check');
 var CoinManager = require('./coin-manager').CoinManager;
+var uuid = require('uuid');
 
 var WORLD_WIDTH = 2000;
 var WORLD_HEIGHT = 2000;
@@ -85,7 +86,7 @@ module.exports.run = function (worker) {
   // fact hit the coin. This two-step check is necessary because we cannot trust position data from the client.
   scServer.exchange.subscribe('external/coin-hit-check/' + serverWorkerId)
   .watch(function (data) {
-    var curUser = users[data.username];
+    var curUser = users[data.userId];
     if (curUser && data.coins && data.coins.length) {
       data.coins.forEach(function (coinData) {
         scServer.exchange.publish('internal/coin-hit-check/' + coinData.swid, {
@@ -99,7 +100,7 @@ module.exports.run = function (worker) {
 
   scServer.exchange.subscribe('internal/player-increase-score/' + serverWorkerId)
   .watch(function (data) {
-    var curUser = users[data.username];
+    var curUser = users[data.userId];
     if (curUser) {
       curUser.score += data.value;
     }
@@ -117,7 +118,7 @@ module.exports.run = function (worker) {
       coinManager.removeCoin(coinId);
       removedCoinIds.push(coinId);
       scServer.exchange.publish('internal/player-increase-score/' + swid, {
-        username: userState.name,
+        userId: userState.id,
         value: coin.v
       });
     }
@@ -134,13 +135,16 @@ module.exports.run = function (worker) {
   };
 
   var flushCoinData = function () {
-    var coinPositions = [];
+    var coinData = {};
+    var coinStates = [];
     for (var j in coinManager.coins) {
       if (coinManager.coins.hasOwnProperty(j)) {
-        coinPositions.push(coinManager.coins[j]);
+        coinStates.push(coinManager.coins[j]);
       }
     }
-    scServer.exchange.publish('coin-states', coinPositions);
+    coinData.swid = serverWorkerId;
+    coinData.coins = coinStates;
+    scServer.exchange.publish('coin-states', coinData);
   };
 
   var flushCoinsTakenData = function () {
@@ -202,15 +206,10 @@ module.exports.run = function (worker) {
     return wasStateUpdated;
   }
 
-  var getUserPresenceChannelName = function (username) {
-    return 'user/' + username + '/presence-notification';
-  };
-
   /*
     In here we handle our incoming realtime connections and listen for events.
   */
   scServer.on('connection', function (socket) {
-
     socket.on('getWorldInfo', function (data, respond) {
       // The first argument to respond can optionally be an Error object.
       respond(null, {
@@ -220,9 +219,11 @@ module.exports.run = function (worker) {
       });
     });
 
-    socket.on('join', function (playerOptions) {
+    socket.on('join', function (playerOptions, respond) {
       var startingPos = getRandomPosition(PLAYER_WIDTH, PLAYER_HEIGHT);
       socket.player = {
+        id: uuid.v4(),
+        swid: serverWorkerId,
         name: playerOptions.name,
         color: playerOptions.color,
         x: startingPos.x,
@@ -232,7 +233,9 @@ module.exports.run = function (worker) {
         height: PLAYER_HEIGHT
       };
 
-      users[playerOptions.name] = socket.player;
+      users[socket.player.id] = socket.player;
+
+      respond(null, {userId: socket.player.id});
     });
 
     socket.on('action', function (playerOp) {
@@ -243,11 +246,11 @@ module.exports.run = function (worker) {
 
     socket.on('disconnect', function () {
       if (socket.player) {
-        var username = socket.player.name;
+        var userId = socket.player.id;
+        delete users[userId];
         scServer.exchange.publish('player-leave', {
-          name: username
+          id: userId
         });
-        delete users[username];
       }
     });
   });

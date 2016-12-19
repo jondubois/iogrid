@@ -30,7 +30,7 @@
         //  Although it will work fine with this tutorial, it's almost certainly not the most current version.
         //  Be sure to replace it with an updated version before you start experimenting with adding your own code.
 
-        var game, playerName;
+        var game, playerName, playerId;
         users = {};
         coins = {};
         // For collision detection
@@ -100,17 +100,16 @@
               });
             }
           });
-
           if (coinsHitList.length) {
             socket.publish('external/coin-hit-check/' + SERVER_WORKER_ID, {
-              username: user.name,
+              userId: user.id,
               coins: coinsHitList
             });
           }
         }
 
-        function moveUser(playerName, x, y) {
-          var user = users[playerName];
+        function moveUser(userId, x, y) {
+          var user = users[userId];
           user.x = x;
           user.y = y;
           user.sprite.x = user.x;
@@ -123,7 +122,7 @@
         }
 
         function removeUserSprite(userData) {
-          var user = users[userData.name];
+          var user = users[userData.id];
           if (user) {
             user.sprite.destroy();
             user.label.destroy();
@@ -146,7 +145,8 @@
 
         function createUserSprite(userData) {
           var user = {};
-          users[userData.name] = user;
+          users[userData.id] = user;
+          user.id = userData.id;
           user.name = userData.name;
 
           var textStyle = {
@@ -170,31 +170,41 @@
           user.width = user.sprite.width;
           user.height = user.sprite.height;
 
-          moveUser(userData.name, userData.x, userData.y);
+          moveUser(userData.id, userData.x, userData.y);
 
-          if (userData.name == playerName) {
+          if (userData.id == playerId) {
             game.camera.setSize(window.innerWidth, window.innerHeight);
             game.camera.follow(user.sprite, null, CAMERA_SMOOTHING, CAMERA_SMOOTHING);
           }
         }
 
         function updateUser(userData) {
-          var user = users[userData.name];
+          var user = users[userData.id];
           if (user) {
             user.score = userData.score;
-            moveUser(userData.name, userData.x, userData.y);
+            moveUser(userData.id, userData.x, userData.y);
           } else {
             createUserSprite(userData);
           }
         }
 
-        function renderCoins(coinDataList) {
-          // TODO: Remove coins which haven't been updated for a while.
-          // E.g. If a worker crashes.
+        function removeCoin(coinId) {
+          var coinToRemove = coins[coinId];
+          if (coinToRemove) {
+            coinTree.remove(coinToRemove.hitArea);
+            coinToRemove.sprite.destroy();
+            delete coins[coinId];
+          }
+        }
+
+        function renderCoins(coinData) {
+          var serverWorkerId = coinData.swid;
+          var coinStateList = coinData.coins;
           var newCoinsLookup = {};
-          coinDataList.forEach(function (coinData) {
+
+          coinStateList.forEach(function (coinData) {
+            newCoinsLookup[coinData.id] = 1;
             if (!coins[coinData.id]) {
-              newCoinsLookup[coinData.id] = 1;
               var coin = coinData;
               coins[coinData.id] = coin;
               coin.sprite = createCircleSprite({
@@ -214,6 +224,11 @@
               coinTree.insert(coin.hitArea);
             }
           });
+          for (var coinId in coins) {
+            if (coins.hasOwnProperty(coinId) && !newCoinsLookup[coinId] && coins[coinId].swid == serverWorkerId) {
+              removeCoin(coinId);
+            }
+          }
         }
 
         function create() {
@@ -230,26 +245,39 @@
           });
 
           socket.subscribe('player-states').watch(function (userStateList) {
+            // console.log(6666, userStateList); // TODO
             userStateList.forEach(updateUser);
           });
 
           socket.subscribe('coin-states').watch(renderCoins);
 
           socket.subscribe('coins-taken').watch(function (coinIds) {
-            coinIds.forEach(function (coinId) {
-              var coinToRemove = coins[coinId];
-              if (coinToRemove) {
-                coinTree.remove(coinToRemove.hitArea);
-                coinToRemove.sprite.destroy();
-                delete coins[coinId];
-              }
-            });
+            coinIds.forEach(removeCoin);
           });
 
-          socket.emit('join', {
-            name: playerName,
-            color: playerColor
-          });
+          function joinWorld() {
+            socket.emit('join', {
+              name: playerName,
+              color: playerColor
+            }, function (err, data) {
+              playerId = data.userId;
+            });
+          }
+
+          function removeUserSprites() {
+            for (var i in users) {
+              if (users.hasOwnProperty(i)) {
+                removeUserSprite(users[i]);
+              }
+            }
+          }
+
+          if (socket.state == 'open') {
+            joinWorld();
+          }
+          // For reconnect
+          socket.on('connect', joinWorld);
+          socket.on('disconnect', removeUserSprites);
         }
 
         function update() {

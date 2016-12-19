@@ -28,6 +28,7 @@ var options = {
   crashWorkerOnError: argv['auto-reboot'] != false,
   // If using nodemon, set this to true, and make sure that environment is 'dev'.
   killMasterOnSignal: false,
+  instanceId: 'realm-1',
   environment: environment
 };
 
