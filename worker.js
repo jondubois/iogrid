@@ -7,9 +7,16 @@ var morgan = require('morgan');
 var healthChecker = require('sc-framework-health-check');
 var CoinManager = require('./coin-manager').CoinManager;
 var uuid = require('uuid');
+var ChannelGrid = require('./channel-grid').ChannelGrid;
+var rbush = require('rbush');
 
 var WORLD_WIDTH = 2000;
 var WORLD_HEIGHT = 2000;
+var WORLD_CELL_WIDTH = 1000;
+var WORLD_CELL_HEIGHT = 1000;
+var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
+var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
+var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
 
 var PLAYER_UPDATE_INTERVAL = 20;
 var PLAYER_MOVE_SPEED = 7;
@@ -18,7 +25,7 @@ var PLAYER_HEIGHT = 70;
 
 var COIN_UPDATE_INTERVAL = 1000;
 var COIN_TAKEN_INTERVAL = 20;
-var COIN_DROP_INTERVAL = 1000;
+var COIN_DROP_INTERVAL = 4000;
 var COIN_MAX_COUNT = 200;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
 
@@ -78,6 +85,51 @@ module.exports.run = function (worker) {
     users: users
   });
 
+  if (WORLD_CELLS % worker.options.workers != 0) {
+    var errorMessage = 'The number of cells in your world (determined by WORLD_WIDTH, WORLD_HEIGHT, WORLD_CELL_WIDTH, WORLD_CELL_HEIGHT)' +
+      ' need to share a common factor with the number of workers or else the workload will not be evenly distributed across them.';
+    throw new Error(errorMessage);
+  }
+
+  var channelGrid = new ChannelGrid({
+    worldWidth: WORLD_WIDTH,
+    worldHeight: WORLD_HEIGHT,
+    rows: WORLD_ROWS,
+    cols: WORLD_COLS,
+    exchange: scServer.exchange
+  });
+
+  var cellsPerWorker = WORLD_CELLS / worker.options.workers;
+
+  function playerStateGridDataHandler(playerStates) {
+    var start = Date.now();
+    var tree = rbush();
+
+    var hitMap = {};
+    playerStates.forEach(function (playerState) {
+      var halfWidth = Math.round(playerState.width / 2);
+      var halfHeight = Math.round(playerState.height / 2);
+      var bounds = {
+        id: playerState.id,
+        playerState: playerState,
+        minX: playerState.x - halfWidth,
+        minY: playerState.y - halfHeight,
+        maxX: playerState.x + halfWidth,
+        maxY: playerState.y + halfHeight
+      };
+      var potentialHits = tree.search(bounds);
+      hitMap[playerState.id] = potentialHits;
+      tree.insert(bounds);
+    });
+
+    // TODO: Test hits with SAT.js and adjust positions
+  };
+
+  for (var h = 0; h < cellsPerWorker; h++) {
+    var cellIndex = worker.id + h * worker.options.workers;
+    channelGrid.watchCellAtIndex('player-states', cellIndex, playerStateGridDataHandler);
+  }
+
   // Check if the user hit a coin.
   // Because the user and the coin may potentially be hosted on different
   // workers/servers, we add an additional step by publishing to a secondary internal channel.
@@ -132,6 +184,7 @@ module.exports.run = function (worker) {
       }
     }
     scServer.exchange.publish('player-states', playerStates);
+    channelGrid.publish('player-states', playerStates); // TODO
   };
 
   var flushCoinData = function () {
