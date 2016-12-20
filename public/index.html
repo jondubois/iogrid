@@ -6,6 +6,7 @@
     <script type="text/javascript" src="/socketcluster.js"></script>
     <script src="/phaser.min.js"></script>
     <script src="/rbush.min.js"></script>
+    <script src="/SAT.min.js"></script>
     <script src="/channel-grid.js"></script>
     <style>
       html {
@@ -47,6 +48,7 @@
         var PLAYER_LINE_OF_SIGHT = (window.innerWidth / 2) * 1.5;
         var USER_INACTIVITY_TIMEOUT = 500;
         var COIN_INACTIVITY_TIMEOUT = 3000;
+        var ENVIRONMENT;
         var SERVER_WORKER_ID;
 
         // 1 means no smoothing. 0.1 is relatively smooth.
@@ -61,6 +63,7 @@
           WORLD_CELL_WIDTH = data.cellWidth;
           WORLD_CELL_HEIGHT = data.cellHeight;
           SERVER_WORKER_ID = data.serverWorkerId;
+          ENVIRONMENT = data.environment;
 
           channelGrid = new ChannelGrid({
             worldWidth: WORLD_WIDTH,
@@ -95,8 +98,64 @@
           game.load.image('background', BACKGROUND_TEXTURE);
         }
 
+        function generateHitArea(user) {
+          var userRadius = Math.round(user.width / 2);
+          return {
+            user: user,
+            minX: user.x - userRadius,
+            minY: user.y - userRadius,
+            maxX: user.x + userRadius,
+            maxY: user.y + userRadius
+          };
+        }
+
+        function preventUserOverlap() {
+          var userTree = new rbush();
+          var hitAreaList = [];
+
+          for (var h in users) {
+            if (users.hasOwnProperty(h)) {
+              var curUser = users[h];
+              curUser.hitArea = generateHitArea(curUser);
+              hitAreaList.push(curUser.hitArea);
+            }
+          }
+          userTree.load(hitAreaList);
+
+          for (var i in users) {
+            if (users.hasOwnProperty(i)) {
+              var curUser = users[i];
+              userTree.remove(curUser.hitArea);
+              var hitList = userTree.search(curUser.hitArea);
+              userTree.insert(curUser.hitArea);
+              hitList.forEach(function (hit) {
+                var userA = new SAT.Circle(new SAT.Vector(curUser.x, curUser.y), Math.round(curUser.width / 2));
+                var userB = new SAT.Circle(new SAT.Vector(hit.user.x, hit.user.y), Math.round(hit.user.width / 2));
+                var response = new SAT.Response();
+                var collided = SAT.testCircleCircle(userA, userB, response);
+                if (collided) {
+                  var overlapV = response.overlapV;
+                  var halfVector = {
+                    x: Math.round(overlapV.x / 2),
+                    y: Math.round(overlapV.y / 2)
+                  };
+                  curUser.x -= halfVector.x;
+                  curUser.y -= halfVector.y;
+                  hit.user.x += halfVector.x;
+                  hit.user.y += halfVector.y;
+
+                  updateUserGraphics(curUser);
+                  updateUserGraphics(hit.user);
+                }
+              });
+            }
+          }
+        }
+
         function handleUserStates(userStateList) {
           userStateList.forEach(updateUser);
+          bringPlayerToTop();
+          preventUserOverlap();
         }
 
         var watchingCells = {};
@@ -184,13 +243,24 @@
           coinStates.forEach(removeCoin);
         }
 
+        function updateUserGraphics(user) {
+          user.sprite.x = user.x;
+          user.sprite.y = user.y;
+          user.label.alignTo(user.sprite, Phaser.BOTTOM_CENTER, 0, 10);
+        }
+
+        function bringPlayerToTop() {
+          if (player) {
+            player.label.bringToTop();
+            player.sprite.bringToTop();
+          }
+        }
+
         function moveUser(userId, x, y) {
           var user = users[userId];
           user.x = x;
           user.y = y;
-          user.sprite.x = user.x;
-          user.sprite.y = user.y;
-          user.label.alignTo(user.sprite, Phaser.BOTTOM_CENTER, 0, 10);
+          updateUserGraphics(user);
           user.label.bringToTop();
           user.sprite.bringToTop();
           user.updated = Date.now();
@@ -282,12 +352,7 @@
         }
 
         function renderCoins(coinStateList) {
-          // var serverWorkerId = coinData.swid;
-          // var coinStateList = coinData.coins;
-          // var newCoinsLookup = {};
-
           coinStateList.forEach(function (coinData) {
-            // newCoinsLookup[coinData.id] = 1;
             if (coins[coinData.id]) {
               coins[coinData.id].updated = Date.now();
             } else {
@@ -377,8 +442,12 @@
         function render() {
           var now = Date.now();
 
-          // For debugging: Uncomment to display frame rate
-          // game.debug.text(game.time.fps, 2, 14, "#00FF00");
+          if (ENVIRONMENT == 'dev') {
+            game.debug.text('FPS:   ' + game.time.fps, 2, 14, "#00FF00");
+            if (player) {
+              game.debug.text('Score: ' + player.score, 2, 30, "#00FF00");
+            }
+          }
 
           for (var i in users) {
             if (users.hasOwnProperty(i)) {
@@ -388,6 +457,7 @@
               }
             }
           }
+
           for (var j in coins) {
             if (coins.hasOwnProperty(j)) {
               var curCoin = coins[j];

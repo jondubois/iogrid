@@ -232,7 +232,8 @@ module.exports.run = function (worker) {
         rows: WORLD_ROWS,
         cellWidth: WORLD_CELL_WIDTH,
         cellHeight: WORLD_CELL_HEIGHT,
-        serverWorkerId: serverWorkerId
+        serverWorkerId: serverWorkerId,
+        environment: environment
       });
     });
 
