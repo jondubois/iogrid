@@ -84,12 +84,6 @@ module.exports.run = function (worker) {
     users: users
   });
 
-  if (WORLD_CELLS % worker.options.workers != 0) {
-    var errorMessage = 'The number of cells in your world (determined by WORLD_WIDTH, WORLD_HEIGHT, WORLD_CELL_WIDTH, WORLD_CELL_HEIGHT)' +
-      ' need to share a common factor with the number of workers or else the workload will not be evenly distributed across them.';
-    throw new Error(errorMessage);
-  }
-
   // This allows us to break up our channels into a grid of cells which we can
   // watch and publish to individually.
   var channelGrid = new ChannelGrid({
