@@ -9,8 +9,8 @@ var uuid = require('uuid');
 var ChannelGrid = require('./public/channel-grid').ChannelGrid;
 var rbush = require('rbush');
 
-var WORLD_WIDTH = 3000;
-var WORLD_HEIGHT = 1000;
+var WORLD_WIDTH = 4000;
+var WORLD_HEIGHT = 4000;
 var WORLD_CELL_WIDTH = 1000;
 var WORLD_CELL_HEIGHT = 1000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
