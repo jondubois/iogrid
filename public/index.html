@@ -6,6 +6,7 @@
     <script type="text/javascript" src="/socketcluster.js"></script>
     <script src="/phaser.min.js"></script>
     <script src="/rbush.min.js"></script>
+    <script src="/channel-grid.js"></script>
     <style>
       html {
         height: 100%;
@@ -30,14 +31,22 @@
         //  Although it will work fine with this tutorial, it's almost certainly not the most current version.
         //  Be sure to replace it with an updated version before you start experimenting with adding your own code.
 
-        var game, playerName, playerId;
+        var game, playerId, player;
         users = {};
         coins = {};
         // For collision detection
         var coinTree = rbush();
+        var channelGrid;
 
         var WORLD_WIDTH;
         var WORLD_HEIGHT;
+        var WORLD_COLS;
+        var WORLD_ROWS;
+        var WORLD_CELL_WIDTH;
+        var WORLD_CELL_HEIGHT;
+        var PLAYER_LINE_OF_SIGHT = (window.innerWidth / 2) * 1.5;
+        var USER_INACTIVITY_TIMEOUT = 500;
+        var COIN_INACTIVITY_TIMEOUT = 3000;
         var SERVER_WORKER_ID;
 
         // 1 means no smoothing. 0.1 is relatively smooth.
@@ -47,12 +56,24 @@
         socket.emit('getWorldInfo', null, function (err, data) {
           WORLD_WIDTH = data.width;
           WORLD_HEIGHT = data.height;
+          WORLD_COLS = data.cols;
+          WORLD_ROWS = data.rows;
+          WORLD_CELL_WIDTH = data.cellWidth;
+          WORLD_CELL_HEIGHT = data.cellHeight;
           SERVER_WORKER_ID = data.serverWorkerId;
+
+          channelGrid = new ChannelGrid({
+            worldWidth: WORLD_WIDTH,
+            worldHeight: WORLD_HEIGHT,
+            rows: WORLD_ROWS,
+            cols: WORLD_COLS,
+            exchange: socket
+          });
 
           game = new Phaser.Game('100', '100', Phaser.AUTO, '', {
             preload: preload,
             create: create,
-            // render: render, // For debugging: Uncomment to display frame rate.
+            render: render,
             update: update
           });
         });
@@ -72,6 +93,57 @@
           };
 
           game.load.image('background', BACKGROUND_TEXTURE);
+        }
+
+        function handleUserStates(userStateList) {
+          userStateList.forEach(updateUser);
+        }
+
+        var watchingCells = {};
+
+        /*
+          Data channels within our game are divided a grids and we only watch the cells
+          which are within our player's line of sight.
+          As the player moves around the game world, we need to keep updating the cell subscriptions.
+        */
+        function updateCellWatchers(playerData, channelName, handler) {
+          if (!watchingCells[channelName]) {
+            watchingCells[channelName] = {};
+          }
+          var watchMap = watchingCells[channelName];
+          var sightArea = {
+            minX: playerData.x - PLAYER_LINE_OF_SIGHT,
+            minY: playerData.y - PLAYER_LINE_OF_SIGHT,
+            maxX: playerData.x + PLAYER_LINE_OF_SIGHT,
+            maxY: playerData.y + PLAYER_LINE_OF_SIGHT
+          };
+          var minCol = Math.max(Math.floor(sightArea.minX / WORLD_CELL_WIDTH), 0);
+          var maxCol = Math.min(Math.floor(sightArea.maxX / WORLD_CELL_WIDTH), WORLD_COLS - 1);
+          var minRow = Math.max(Math.floor(sightArea.minY / WORLD_CELL_HEIGHT), 0);
+          var maxRow = Math.min(Math.floor(sightArea.maxY / WORLD_CELL_HEIGHT), WORLD_ROWS - 1);
+
+          var matchedCells = {};
+
+          for (var r = minRow; r <= maxRow; r++) {
+            for (var c = minCol; c <= maxCol; c++) {
+              var colRowKey = c + ',' + r;
+              matchedCells[colRowKey] = {col: c, row: r};
+              if (!watchMap[colRowKey]) {
+                watchMap[colRowKey] = {col: c, row: r};
+                channelGrid.watchCell(channelName, c, r, handler);
+              }
+            }
+          }
+
+          for (var i in watchMap) {
+            if (watchMap.hasOwnProperty(i)) {
+              if (!matchedCells[i]) {
+                var coords = watchMap[i];
+                channelGrid.unwatchCell(channelName, coords.col, coords.row, handler);
+                delete watchMap[i];
+              }
+            }
+          }
         }
 
         function reportApproxCoinCollisionsToServer(user) {
@@ -108,6 +180,10 @@
           }
         }
 
+        function removeTakenCoins(coinStates) {
+          coinStates.forEach(removeCoin);
+        }
+
         function moveUser(userId, x, y) {
           var user = users[userId];
           user.x = x;
@@ -117,15 +193,22 @@
           user.label.alignTo(user.sprite, Phaser.BOTTOM_CENTER, 0, 10);
           user.label.bringToTop();
           user.sprite.bringToTop();
+          user.updated = Date.now();
 
           reportApproxCoinCollisionsToServer(user);
+          if (user.id == playerId) {
+            updateCellWatchers(user, 'player-states', handleUserStates);
+            updateCellWatchers(user, 'coin-states', renderCoins);
+            updateCellWatchers(user, 'coins-taken', removeTakenCoins);
+          }
         }
 
-        function removeUserSprite(userData) {
+        function removeUser(userData) {
           var user = users[userData.id];
           if (user) {
             user.sprite.destroy();
             user.label.destroy();
+            delete users[userData.id];
           }
         }
 
@@ -173,6 +256,7 @@
           moveUser(userData.id, userData.x, userData.y);
 
           if (userData.id == playerId) {
+            player = user;
             game.camera.setSize(window.innerWidth, window.innerHeight);
             game.camera.follow(user.sprite, null, CAMERA_SMOOTHING, CAMERA_SMOOTHING);
           }
@@ -188,23 +272,25 @@
           }
         }
 
-        function removeCoin(coinId) {
-          var coinToRemove = coins[coinId];
+        function removeCoin(coinData) {
+          var coinToRemove = coins[coinData.id];
           if (coinToRemove) {
             coinTree.remove(coinToRemove.hitArea);
             coinToRemove.sprite.destroy();
-            delete coins[coinId];
+            delete coins[coinToRemove.id];
           }
         }
 
-        function renderCoins(coinData) {
-          var serverWorkerId = coinData.swid;
-          var coinStateList = coinData.coins;
-          var newCoinsLookup = {};
+        function renderCoins(coinStateList) {
+          // var serverWorkerId = coinData.swid;
+          // var coinStateList = coinData.coins;
+          // var newCoinsLookup = {};
 
           coinStateList.forEach(function (coinData) {
-            newCoinsLookup[coinData.id] = 1;
-            if (!coins[coinData.id]) {
+            // newCoinsLookup[coinData.id] = 1;
+            if (coins[coinData.id]) {
+              coins[coinData.id].updated = Date.now();
+            } else {
               var coin = coinData;
               coins[coinData.id] = coin;
               coin.sprite = createCircleSprite({
@@ -220,15 +306,11 @@
                 maxY: coinData.y + coinData.r,
                 id: coinData.id
               };
+              coin.updated = Date.now();
 
               coinTree.insert(coin.hitArea);
             }
           });
-          for (var coinId in coins) {
-            if (coins.hasOwnProperty(coinId) && !newCoinsLookup[coinId] && coins[coinId].swid == serverWorkerId) {
-              removeCoin(coinId);
-            }
-          }
         }
 
         function create() {
@@ -237,37 +319,24 @@
           game.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
           // Generate a random name for the user.
-          playerName = 'user-' + Math.round(Math.random() * 10000);
+          var playerName = 'user-' + Math.round(Math.random() * 10000);
           var playerColor = Phaser.Color.getColor(getRandomColor(100), getRandomColor(100), getRandomColor(100));
-
-          socket.subscribe('player-leave').watch(function (userData) {
-            removeUserSprite(userData);
-          });
-
-          socket.subscribe('player-states').watch(function (userStateList) {
-            // console.log(6666, userStateList); // TODO
-            userStateList.forEach(updateUser);
-          });
-
-          socket.subscribe('coin-states').watch(renderCoins);
-
-          socket.subscribe('coins-taken').watch(function (coinIds) {
-            coinIds.forEach(removeCoin);
-          });
 
           function joinWorld() {
             socket.emit('join', {
               name: playerName,
               color: playerColor
-            }, function (err, data) {
-              playerId = data.userId;
+            }, function (err, playerData) {
+              playerId = playerData.id;
+              updateCellWatchers(playerData, 'player-states', handleUserStates);
+              updateCellWatchers(playerData, 'coin-states', renderCoins);
             });
           }
 
-          function removeUserSprites() {
+          function removeAllUserSprites() {
             for (var i in users) {
               if (users.hasOwnProperty(i)) {
-                removeUserSprite(users[i]);
+                removeUser(users[i]);
               }
             }
           }
@@ -277,7 +346,7 @@
           }
           // For reconnect
           socket.on('connect', joinWorld);
-          socket.on('disconnect', removeUserSprites);
+          socket.on('disconnect', removeAllUserSprites);
         }
 
         function update() {
@@ -306,7 +375,27 @@
         }
 
         function render() {
-          game.debug.text(game.time.fps, 2, 14, "#00FF00");
+          var now = Date.now();
+
+          // For debugging: Uncomment to display frame rate
+          // game.debug.text(game.time.fps, 2, 14, "#00FF00");
+
+          for (var i in users) {
+            if (users.hasOwnProperty(i)) {
+              var curUser = users[i];
+              if (now - curUser.updated > USER_INACTIVITY_TIMEOUT) {
+                removeUser(curUser);
+              }
+            }
+          }
+          for (var j in coins) {
+            if (coins.hasOwnProperty(j)) {
+              var curCoin = coins[j];
+              if (now - curCoin.updated > COIN_INACTIVITY_TIMEOUT) {
+                removeCoin(curCoin);
+              }
+            }
+          }
         }
       };
     </script>

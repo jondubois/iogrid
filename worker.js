@@ -2,14 +2,20 @@ var fs = require('fs');
 var express = require('express');
 var serveStatic = require('serve-static');
 var path = require('path');
-var express = require('express');
 var morgan = require('morgan');
 var healthChecker = require('sc-framework-health-check');
 var CoinManager = require('./coin-manager').CoinManager;
 var uuid = require('uuid');
+var ChannelGrid = require('./public/channel-grid').ChannelGrid;
+var rbush = require('rbush');
 
-var WORLD_WIDTH = 2000;
-var WORLD_HEIGHT = 2000;
+var WORLD_WIDTH = 3000;
+var WORLD_HEIGHT = 1000;
+var WORLD_CELL_WIDTH = 1000;
+var WORLD_CELL_HEIGHT = 1000;
+var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
+var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
+var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
 
 var PLAYER_UPDATE_INTERVAL = 20;
 var PLAYER_MOVE_SPEED = 7;
@@ -78,6 +84,22 @@ module.exports.run = function (worker) {
     users: users
   });
 
+  if (WORLD_CELLS % worker.options.workers != 0) {
+    var errorMessage = 'The number of cells in your world (determined by WORLD_WIDTH, WORLD_HEIGHT, WORLD_CELL_WIDTH, WORLD_CELL_HEIGHT)' +
+      ' need to share a common factor with the number of workers or else the workload will not be evenly distributed across them.';
+    throw new Error(errorMessage);
+  }
+
+  // This allows us to break up our channels into a grid of cells which we can
+  // watch and publish to individually.
+  var channelGrid = new ChannelGrid({
+    worldWidth: WORLD_WIDTH,
+    worldHeight: WORLD_HEIGHT,
+    rows: WORLD_ROWS,
+    cols: WORLD_COLS,
+    exchange: scServer.exchange
+  });
+
   // Check if the user hit a coin.
   // Because the user and the coin may potentially be hosted on different
   // workers/servers, we add an additional step by publishing to a secondary internal channel.
@@ -106,7 +128,7 @@ module.exports.run = function (worker) {
     }
   });
 
-  var removedCoinIds = [];
+  var removedCoins = [];
 
   scServer.exchange.subscribe('internal/coin-hit-check/' + serverWorkerId)
   .watch(function (data) {
@@ -115,8 +137,8 @@ module.exports.run = function (worker) {
     var swid = data.swid;
     if (coinManager.doesUserTouchCoin(coinId, userState)) {
       var coin = coinManager.coins[coinId];
+      removedCoins.push(coin);
       coinManager.removeCoin(coinId);
-      removedCoinIds.push(coinId);
       scServer.exchange.publish('internal/player-increase-score/' + swid, {
         userId: userState.id,
         value: coin.v
@@ -131,26 +153,23 @@ module.exports.run = function (worker) {
         playerStates.push(users[i]);
       }
     }
-    scServer.exchange.publish('player-states', playerStates);
+    channelGrid.publish('player-states', playerStates);
   };
 
   var flushCoinData = function () {
-    var coinData = {};
     var coinStates = [];
     for (var j in coinManager.coins) {
       if (coinManager.coins.hasOwnProperty(j)) {
         coinStates.push(coinManager.coins[j]);
       }
     }
-    coinData.swid = serverWorkerId;
-    coinData.coins = coinStates;
-    scServer.exchange.publish('coin-states', coinData);
+    channelGrid.publish('coin-states', coinStates);
   };
 
   var flushCoinsTakenData = function () {
-    if (removedCoinIds.length) {
-      scServer.exchange.publish('coins-taken', removedCoinIds);
-      removedCoinIds = [];
+    if (removedCoins.length) {
+      channelGrid.publish('coins-taken', removedCoins);
+      removedCoins = [];
     }
   };
 
@@ -215,6 +234,10 @@ module.exports.run = function (worker) {
       respond(null, {
         width: WORLD_WIDTH,
         height: WORLD_HEIGHT,
+        cols: WORLD_COLS,
+        rows: WORLD_ROWS,
+        cellWidth: WORLD_CELL_WIDTH,
+        cellHeight: WORLD_CELL_HEIGHT,
         serverWorkerId: serverWorkerId
       });
     });
@@ -235,7 +258,7 @@ module.exports.run = function (worker) {
 
       users[socket.player.id] = socket.player;
 
-      respond(null, {userId: socket.player.id});
+      respond(null, socket.player);
     });
 
     socket.on('action', function (playerOp) {
@@ -248,9 +271,6 @@ module.exports.run = function (worker) {
       if (socket.player) {
         var userId = socket.player.id;
         delete users[userId];
-        scServer.exchange.publish('player-leave', {
-          id: userId
-        });
       }
     });
   });
