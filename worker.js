@@ -5,13 +5,14 @@ var path = require('path');
 var morgan = require('morgan');
 var healthChecker = require('sc-framework-health-check');
 var CoinManager = require('./coin-manager').CoinManager;
+var BotManager = require('./bot-manager').BotManager;
 var uuid = require('uuid');
 var ChannelGrid = require('./public/channel-grid').ChannelGrid;
 var SAT = require('sat');
 var rbush = require('rbush');
 
-var WORLD_WIDTH = 500;
-var WORLD_HEIGHT = 500;
+var WORLD_WIDTH = 1000;
+var WORLD_HEIGHT = 1000;
 var WORLD_CELL_WIDTH = 1000;
 var WORLD_CELL_HEIGHT = 1000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
@@ -27,6 +28,8 @@ var COIN_TAKEN_INTERVAL = 20;
 var COIN_DROP_INTERVAL = 1000;
 var COIN_MAX_COUNT = 10;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
+
+var BOT_COUNT = 2;
 
 var users = {};
 
@@ -77,8 +80,15 @@ module.exports.run = function (worker) {
 
   var coinManager = new CoinManager({
     serverWorkerId: serverWorkerId,
+    worldWidth: WORLD_WIDTH,
+    worldHeight: WORLD_HEIGHT,
     maxCoinCount: COIN_MAX_COUNT,
     playerNoDropRadius: COIN_PLAYER_NO_DROP_RADIUS,
+    users: users
+  });
+
+  var botManager = new BotManager({
+    serverWorkerId: serverWorkerId,
     worldWidth: WORLD_WIDTH,
     worldHeight: WORLD_HEIGHT,
     users: users
@@ -165,7 +175,7 @@ module.exports.run = function (worker) {
     }
   });
 
-  var flushPlayerData = function () {
+  function flushPlayerData() {
     var playerStates = [];
     for (var i in users) {
       if (users.hasOwnProperty(i)) {
@@ -173,9 +183,9 @@ module.exports.run = function (worker) {
       }
     }
     channelGrid.publish('player-states', playerStates);
-  };
+  }
 
-  var flushCoinData = function () {
+  function flushCoinData() {
     var coinStates = [];
     for (var j in coinManager.coins) {
       if (coinManager.coins.hasOwnProperty(j)) {
@@ -183,16 +193,23 @@ module.exports.run = function (worker) {
       }
     }
     channelGrid.publish('coin-states', coinStates);
-  };
+  }
 
-  var flushCoinsTakenData = function () {
+  function flushCoinsTakenData() {
     if (removedCoins.length) {
       channelGrid.publish('coins-taken', removedCoins);
       removedCoins = [];
     }
-  };
+  }
 
-  setInterval(flushPlayerData, PLAYER_UPDATE_INTERVAL);
+  function updatePlayers() {
+    botManager.moveBotsRandomly(function (bot) {
+      updatePlayerState(bot, bot.ops, {moveSpeed: bot.speed});
+    });
+    flushPlayerData();
+  }
+
+  setInterval(updatePlayers, PLAYER_UPDATE_INTERVAL);
   setInterval(flushCoinData, COIN_UPDATE_INTERVAL);
   setInterval(flushCoinsTakenData, COIN_TAKEN_INTERVAL);
 
@@ -203,25 +220,31 @@ module.exports.run = function (worker) {
 
   setInterval(dropCoin, COIN_DROP_INTERVAL);
 
-  function updatePlayerState(player, playerOp) {
+  function updatePlayerState(player, playerOp, options) {
+    if (!options) {
+      options = {};
+    }
+    if (!options.moveSpeed) {
+      options.moveSpeed = PLAYER_MOVE_SPEED;
+    }
     var wasStateUpdated = false;
 
     var movementVector = {x: 0, y: 0};
 
     if (playerOp.u) {
-      movementVector.y = -PLAYER_MOVE_SPEED;
+      movementVector.y = -options.moveSpeed;
       wasStateUpdated = true;
     }
     if (playerOp.d) {
-      movementVector.y = PLAYER_MOVE_SPEED;
+      movementVector.y = options.moveSpeed;
       wasStateUpdated = true;
     }
     if (playerOp.r) {
-      movementVector.x = PLAYER_MOVE_SPEED;
+      movementVector.x = options.moveSpeed;
       wasStateUpdated = true;
     }
     if (playerOp.l) {
-      movementVector.x = -PLAYER_MOVE_SPEED;
+      movementVector.x = -options.moveSpeed;
       wasStateUpdated = true;
     }
 
@@ -263,6 +286,10 @@ module.exports.run = function (worker) {
       });
     }
     return wasStateUpdated;
+  }
+
+  for (var b = 0; b < BOT_COUNT; b++) {
+    botManager.addBot();
   }
 
   /*
