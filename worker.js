@@ -10,17 +10,18 @@ var uuid = require('uuid');
 var ChannelGrid = require('./public/channel-grid').ChannelGrid;
 var SAT = require('sat');
 var rbush = require('rbush');
+var cellController = require('./cell');
 
-var WORLD_WIDTH = 1000;
-var WORLD_HEIGHT = 1000;
-var WORLD_CELL_WIDTH = 1000;
-var WORLD_CELL_HEIGHT = 1000;
+var WORLD_WIDTH = 2000;
+var WORLD_HEIGHT = 2000;
+var WORLD_CELL_WIDTH = 500;
+var WORLD_CELL_HEIGHT = 500;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
 var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
 
-var PLAYER_UPDATE_INTERVAL = 20;
-var PLAYER_MOVE_SPEED = 5;
+var PLAYER_UPDATE_INTERVAL = 30;
+var PLAYER_MOVE_SPEED = 10;
 var PLAYER_DIAMETER = 70;
 
 var COIN_UPDATE_INTERVAL = 1000;
@@ -31,7 +32,9 @@ var COIN_PLAYER_NO_DROP_RADIUS = 100;
 
 var BOT_COUNT = 2;
 
-var users = {};
+var game = {
+  users: {}
+};
 
 function getRandomPosition(spriteWidth, spriteHeight) {
   var halfSpriteWidth = spriteWidth / 2;
@@ -67,6 +70,7 @@ module.exports.run = function (worker) {
 
   httpServer.on('request', app);
 
+  // TODO: Prevent user from subscribing to internal channels
   scServer.addMiddleware(scServer.MIDDLEWARE_PUBLISH_IN, function (req, next) {
     // Only allow clients to publish to channels whose names start with 'external/'
     if (req.channel.indexOf('external/') == 0) {
@@ -84,14 +88,14 @@ module.exports.run = function (worker) {
     worldHeight: WORLD_HEIGHT,
     maxCoinCount: COIN_MAX_COUNT,
     playerNoDropRadius: COIN_PLAYER_NO_DROP_RADIUS,
-    users: users
+    users: game.users
   });
 
   var botManager = new BotManager({
     serverWorkerId: serverWorkerId,
     worldWidth: WORLD_WIDTH,
     worldHeight: WORLD_HEIGHT,
-    users: users
+    users: game.users
   });
 
   // This allows us to break up our channels into a grid of cells which we can
@@ -104,6 +108,111 @@ module.exports.run = function (worker) {
     exchange: scServer.exchange
   });
 
+  scServer.exchange.subscribe('internal/worker-data/' + serverWorkerId)
+  .watch(function (data) {
+    var playerIds = Object.keys(data.player);
+    playerIds.forEach(function (id) {
+      var targetPlayerState = game.users[id];
+      if (targetPlayerState) {
+        var freshOp = targetPlayerState.op;
+        var sourcePlayerState = data.player[id];
+        for (var i in targetPlayerState) {
+          if (targetPlayerState.hasOwnProperty(i)) {
+            delete targetPlayerState[i];
+          }
+        }
+        for (var j in sourcePlayerState) {
+          if (sourcePlayerState.hasOwnProperty(j)) {
+            targetPlayerState[j] = sourcePlayerState[j];
+          }
+        }
+        if (freshOp) {
+          targetPlayerState.op = freshOp;
+        } else {
+          delete targetPlayerState.op;
+        }
+      }
+    });
+  });
+
+  if (WORLD_CELLS % worker.options.workers != 0) {
+    var errorMessage = 'The number of cells in your world (determined by WORLD_WIDTH, WORLD_HEIGHT, WORLD_CELL_WIDTH, WORLD_CELL_HEIGHT)' +
+      ' should share a common factor with the number of workers or else the workload might get duplicated for some cells.';
+    console.error(errorMessage);
+  }
+
+  var cellsPerWorker = WORLD_CELLS / worker.options.workers;
+  var workerCellIndexes = {};
+
+  for (var h = 0; h < cellsPerWorker; h++) {
+    var cellIndex = worker.id + h * worker.options.workers;
+    // Track cell indexes handled by our current worker.
+    workerCellIndexes[cellIndex] = true;
+    channelGrid.watchCellAtIndex('internal/cell-data-processing', cellIndex, gridCellDataHandler);
+  }
+
+  function dispatchProcessedData(processedCellData) {
+    var workerData = {};
+    var wokerIdList = [];
+    var typeList = Object.keys(processedCellData);
+
+    typeList.forEach(function (type) {
+      var stateList = processedCellData[type];
+      var ids = Object.keys(stateList);
+
+      ids.forEach(function (id) {
+        var state = stateList[id];
+        var swid = state.swid;
+
+        if (!workerData[swid]) {
+          workerData[swid] = {};
+          wokerIdList.push(swid);
+        }
+        if (!workerData[swid][type]) {
+          workerData[swid][type] = {};
+        }
+
+        workerData[swid][type][id] = state;
+
+        if (state.op) {
+          delete state.op;
+        }
+
+        var cellIndex = channelGrid.getCellIndex(state);
+
+        // After doing the processing, if the state object is no longer
+        // in this cell, then we should delete it from our cellData map.
+        if (!workerCellIndexes[cellIndex]) {
+          delete processedCellData[type][id];
+        }
+      });
+    });
+
+    wokerIdList.forEach(function (swid) {
+      scServer.exchange.publish('internal/worker-data/' + swid, workerData[swid]);
+    });
+  };
+
+  var cellControllerOptions = {
+    worldWidth: WORLD_WIDTH,
+    worldHeight: WORLD_HEIGHT,
+    playerMoveSpeed: PLAYER_MOVE_SPEED
+  };
+  var cellData = {};
+
+  function gridCellDataHandler(stateList) {
+    stateList.forEach(function (state) {
+      if (!cellData[state.type]) {
+        cellData[state.type] = {};
+      }
+      if (!cellData[state.type][state.id]) {
+        cellData[state.type][state.id] = state;
+      }
+      cellData[state.type][state.id].op = state.op;
+    });
+    cellController.run(cellControllerOptions, cellData, dispatchProcessedData);
+  }
+
   // Check if the user hit a coin.
   // Because the user and the coin may potentially be hosted on different
   // workers/servers, we add an additional step by publishing to a secondary internal channel.
@@ -112,7 +221,7 @@ module.exports.run = function (worker) {
   // fact hit the coin. This two-step check is necessary because we cannot trust position data from the client.
   scServer.exchange.subscribe('external/coin-hit-check/' + serverWorkerId)
   .watch(function (data) {
-    var curUser = users[data.userId];
+    var curUser = game.users[data.userId];
     if (curUser && data.coins && data.coins.length) {
       data.coins.forEach(function (coinData) {
         scServer.exchange.publish('internal/coin-hit-check/' + coinData.swid, {
@@ -126,7 +235,7 @@ module.exports.run = function (worker) {
 
   scServer.exchange.subscribe('internal/player-increase-score/' + serverWorkerId)
   .watch(function (data) {
-    var curUser = users[data.userId];
+    var curUser = game.users[data.userId];
     if (curUser) {
       curUser.score += data.value;
     }
@@ -150,39 +259,23 @@ module.exports.run = function (worker) {
     }
   });
 
-  function getVectorLength(v) {
-    return Math.sqrt(v.x * v.x + v.y * v.y);
-  };
-
-  function resolveCollision(player, otherPlayer) {
-    var currentUser = new SAT.Circle(new SAT.Vector(player.x, player.y), Math.round(player.width / 2));
-    var otherUser = new SAT.Circle(new SAT.Vector(otherPlayer.x, otherPlayer.y), Math.round(otherPlayer.width / 2));
-    var response = new SAT.Response();
-    var collided = SAT.testCircleCircle(currentUser, otherUser, response);
-
-    if (collided) {
-      var olv = response.overlapV;
-      player.x -= olv.x;
-      player.y -= olv.y;
-    }
-  }
-
-  scServer.exchange.subscribe('internal/player-resolve-overlay/' + serverWorkerId)
-  .watch(function (data) {
-    var curUser = users[data.playerId];
-    if (curUser) {
-      resolveCollision(curUser, data.otherPlayer);
-    }
-  });
-
   function flushPlayerData() {
     var playerStates = [];
-    for (var i in users) {
-      if (users.hasOwnProperty(i)) {
-        playerStates.push(users[i]);
+    for (var i in game.users) {
+      if (game.users.hasOwnProperty(i)) {
+        playerStates.push(game.users[i]);
       }
     }
-    channelGrid.publish('player-states', playerStates);
+
+    channelGrid.publish('cell-data', playerStates);
+
+    // Publish to internal channel for processing (e.g. Collision
+    // detection and resolution, scoring, etc...)
+    channelGrid.publish('internal/cell-data-processing', playerStates);
+
+    playerStates.forEach(function (player) {
+      delete player.op;
+    });
   }
 
   function flushCoinData() {
@@ -203,9 +296,9 @@ module.exports.run = function (worker) {
   }
 
   function updatePlayers() {
-    botManager.moveBotsRandomly(function (bot) {
-      updatePlayerState(bot, bot.ops, {moveSpeed: bot.speed});
-    });
+    // botManager.moveBotsRandomly(function (bot) { // TODO
+    //   updatePlayerState(bot, bot.op, {moveSpeed: bot.speed});
+    // });
     flushPlayerData();
   }
 
@@ -220,82 +313,15 @@ module.exports.run = function (worker) {
 
   setInterval(dropCoin, COIN_DROP_INTERVAL);
 
-  function updatePlayerState(player, playerOp, options) {
-    if (!options) {
-      options = {};
-    }
-    if (!options.moveSpeed) {
-      options.moveSpeed = PLAYER_MOVE_SPEED;
-    }
-    var wasStateUpdated = false;
-
-    var movementVector = {x: 0, y: 0};
-
-    if (playerOp.u) {
-      movementVector.y = -options.moveSpeed;
-      wasStateUpdated = true;
-    }
-    if (playerOp.d) {
-      movementVector.y = options.moveSpeed;
-      wasStateUpdated = true;
-    }
-    if (playerOp.r) {
-      movementVector.x = options.moveSpeed;
-      wasStateUpdated = true;
-    }
-    if (playerOp.l) {
-      movementVector.x = -options.moveSpeed;
-      wasStateUpdated = true;
-    }
-
-    player.x += movementVector.x;
-    player.y += movementVector.y;
-
-    var halfWidth = Math.round(player.width / 2);
-    var halfHeight = Math.round(player.height / 2);
-
-    var leftX = player.x - halfWidth;
-    var rightX = player.x + halfWidth;
-    var topY = player.y - halfHeight;
-    var bottomY = player.y + halfHeight;
-
-    if (leftX < 0) {
-      player.x = halfWidth;
-    } else if (rightX > WORLD_WIDTH) {
-      player.x = WORLD_WIDTH - halfWidth;
-    }
-    if (topY < 0) {
-      player.y = halfHeight;
-    } else if (bottomY > WORLD_HEIGHT) {
-      player.y = WORLD_HEIGHT - halfHeight;
-    }
-
-    var overlaps = playerOp.ols;
-    if (overlaps && overlaps.length) {
-      overlaps.forEach(function (otherPlayer) {
-        // To prevent cheating, we should resolve the other player's position within their host process.
-        // We assume that at least one of the players will give us accurate collision information.
-        // Since there is no strong incentive for both players to try to cheat collision detection, this is a
-        // safe enough assumption.
-        resolveCollision(player, otherPlayer);
-
-        scServer.exchange.publish('internal/player-resolve-overlay/' + otherPlayer.swid, {
-          playerId: otherPlayer.id,
-          otherPlayer: player
-        });
-      });
-    }
-    return wasStateUpdated;
-  }
-
   for (var b = 0; b < BOT_COUNT; b++) {
-    botManager.addBot();
+    // botManager.addBot(); // TODO
   }
 
   /*
     In here we handle our incoming realtime connections and listen for events.
   */
   scServer.on('connection', function (socket) {
+    console.log('SWID:', serverWorkerId);
     socket.on('getWorldInfo', function (data, respond) {
       // The first argument to respond can optionally be an Error object.
       respond(null, {
@@ -314,6 +340,7 @@ module.exports.run = function (worker) {
       var startingPos = getRandomPosition(PLAYER_DIAMETER, PLAYER_DIAMETER);
       socket.player = {
         id: uuid.v4(),
+        type: 'player',
         swid: serverWorkerId,
         name: playerOptions.name,
         color: playerOptions.color,
@@ -321,24 +348,30 @@ module.exports.run = function (worker) {
         y: startingPos.y,
         score: 0,
         width: PLAYER_DIAMETER,
-        height: PLAYER_DIAMETER
+        height: PLAYER_DIAMETER,
+        processed: Date.now()
       };
 
-      users[socket.player.id] = socket.player;
+      game.users[socket.player.id] = socket.player;
 
       respond(null, socket.player);
     });
 
+    function setPlayerAction(player, op) {
+      player.op = op;
+    }
+
     socket.on('action', function (playerOp) {
       if (socket.player) {
-        var wasStateUpdated = updatePlayerState(socket.player, playerOp);
+        setPlayerAction(socket.player, playerOp);
       }
     });
 
     socket.on('disconnect', function () {
       if (socket.player) {
         var userId = socket.player.id;
-        delete users[userId];
+        delete game.users[userId];
+        delete game.users[userId];
       }
     });
   });

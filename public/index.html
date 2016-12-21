@@ -45,7 +45,7 @@
         var WORLD_ROWS;
         var WORLD_CELL_WIDTH;
         var WORLD_CELL_HEIGHT;
-        var PLAYER_LINE_OF_SIGHT = (window.innerWidth / 2) * 1.5;
+        var PLAYER_LINE_OF_SIGHT = 500;//(window.innerWidth / 2) * 1.5;
         var USER_INACTIVITY_TIMEOUT = 500;
         var COIN_INACTIVITY_TIMEOUT = 3000;
         var ENVIRONMENT;
@@ -98,56 +98,9 @@
           game.load.image('background', BACKGROUND_TEXTURE);
         }
 
-        function generateHitArea(user, safetyFactor) {
-          var userRadius = Math.round(user.width / 2) * (safetyFactor || 1);
-          return {
-            user: user,
-            minX: user.x - userRadius,
-            minY: user.y - userRadius,
-            maxX: user.x + userRadius,
-            maxY: user.y + userRadius
-          };
-        }
-
-        function getVectorLength(v) {
-          return Math.sqrt(v.x * v.x + v.y * v.y);
-        }
-
-        var playerOverlaps = [];
-
-        function preventUserOverlap() {
-          playerOverlaps = [];
-          var userTree = new rbush();
-          var hitAreaList = [];
-
-          for (var h in users) {
-            if (users.hasOwnProperty(h)) {
-              var curUser = users[h];
-              curUser.hitArea = generateHitArea(curUser, 1.2);
-              hitAreaList.push(curUser.hitArea);
-            }
-          }
-          userTree.load(hitAreaList);
-
-          userTree.remove(player.hitArea);
-          var hitList = userTree.search(player.hitArea);
-
-          hitList.forEach(function (hit) {
-            playerOverlaps.push({
-              id: hit.user.id,
-              swid: hit.user.swid,
-              x: hit.user.x,
-              y: hit.user.y,
-              width: hit.user.width,
-              height: hit.user.height
-            });
-          });
-        }
-
         function handleUserStates(userStateList) {
           userStateList.forEach(updateUser);
           bringPlayerToTop();
-          preventUserOverlap();
         }
 
         var watchingCells = {};
@@ -255,11 +208,11 @@
           updateUserGraphics(user);
           user.label.bringToTop();
           user.sprite.bringToTop();
-          user.updated = Date.now();
+          user.clientProcessed = Date.now();
 
           if (user.id == playerId) {
             reportApproxCoinCollisionsToServer(user);
-            updateCellWatchers(user, 'player-states', handleUserStates);
+            updateCellWatchers(user, 'cell-data', handleUserStates);
             updateCellWatchers(user, 'coin-states', renderCoins);
             updateCellWatchers(user, 'coins-taken', removeTakenCoins);
           }
@@ -294,6 +247,7 @@
           user.id = userData.id;
           user.swid = userData.swid;
           user.name = userData.name;
+          user.serverProcessed = userData.processed;
 
           var textStyle = {
             font: '16px Arial',
@@ -328,8 +282,12 @@
         function updateUser(userData) {
           var user = users[userData.id];
           if (user) {
-            user.score = userData.score;
-            moveUser(userData.id, userData.x, userData.y);
+            // console.log(222, userData.processed);
+            // if (userData.processed > user.serverProcessed) { // TODO
+              user.score = userData.score;
+              user.serverProcessed = userData.processed;
+              moveUser(userData.id, userData.x, userData.y);
+            // }
           } else {
             createUserSprite(userData);
           }
@@ -347,7 +305,7 @@
         function renderCoins(coinStateList) {
           coinStateList.forEach(function (coinData) {
             if (coins[coinData.id]) {
-              coins[coinData.id].updated = Date.now();
+              coins[coinData.id].processed = Date.now();
             } else {
               var coin = coinData;
               coins[coinData.id] = coin;
@@ -364,7 +322,7 @@
                 maxY: coinData.y + coinData.r,
                 id: coinData.id
               };
-              coin.updated = Date.now();
+              coin.processed = Date.now();
 
               coinTree.insert(coin.hitArea);
             }
@@ -386,7 +344,7 @@
               color: playerColor
             }, function (err, playerData) {
               playerId = playerData.id;
-              updateCellWatchers(playerData, 'player-states', handleUserStates);
+              updateCellWatchers(playerData, 'cell-data', handleUserStates);
               updateCellWatchers(playerData, 'coin-states', renderCoins);
             });
           }
@@ -426,10 +384,6 @@
             playerOp.l = 1;
             didAction = true;
           }
-          if (playerOverlaps.length) {
-            playerOp.ols = playerOverlaps;
-            didAction = true;
-          }
           if (didAction) {
             // Send the player operations for the server to process.
             socket.emit('action', playerOp);
@@ -449,7 +403,7 @@
           for (var i in users) {
             if (users.hasOwnProperty(i)) {
               var curUser = users[i];
-              if (now - curUser.updated > USER_INACTIVITY_TIMEOUT) {
+              if (now - curUser.clientProcessed > USER_INACTIVITY_TIMEOUT) {
                 removeUser(curUser);
               }
             }
@@ -458,7 +412,7 @@
           for (var j in coins) {
             if (coins.hasOwnProperty(j)) {
               var curCoin = coins[j];
-              if (now - curCoin.updated > COIN_INACTIVITY_TIMEOUT) {
+              if (now - curCoin.processed > COIN_INACTIVITY_TIMEOUT) {
                 removeCoin(curCoin);
               }
             }

@@ -34,7 +34,12 @@ ChannelGrid.prototype._convertCellIndexToCoordinates = function (index) {
   }
 };
 
-ChannelGrid.prototype._getCellCoordinates = function (object) {
+ChannelGrid.prototype.getCellIndex = function (object) {
+  var coords = this.getCellCoordinates(object);
+  return coords.r * this.cols + coords.c;
+};
+
+ChannelGrid.prototype.getCellCoordinates = function (object) {
   return {
     r: Math.floor(object.y / this.cellHeight),
     c: Math.floor(object.x / this.cellWidth)
@@ -51,7 +56,7 @@ ChannelGrid.prototype.publish = function (channelName, objects) {
   var grid = this._generateEmptyGrid(this.rows, this.cols);
 
   objects.forEach(function (obj) {
-    var cell = self._getCellCoordinates(obj);
+    var cell = self.getCellCoordinates(obj);
     if (grid[cell.r] && grid[cell.r][cell.c]) {
       grid[cell.r][cell.c].push(obj);
     }

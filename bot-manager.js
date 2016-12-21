@@ -46,7 +46,8 @@ BotManager.prototype.addBot = function (options) {
 
   var bot = {
     id: botId,
-    type: 'bot',
+    type: 'player',
+    subtype: 'bot',
     swid: this.serverWorkerId,
     name: options.name || 'bot-' + Math.round(Math.random() * 10000),
     color: options.color || 1000,
@@ -54,7 +55,8 @@ BotManager.prototype.addBot = function (options) {
     speed: options.speed || BOT_DEFAULT_SPEED,
     width: diameter,
     height: diameter,
-    ops: {}
+    op: {},
+    processed: Date.now()
   };
   if (options.x && options.y) {
     bot.x = options.x;
@@ -83,7 +85,7 @@ BotManager.prototype.moveBotsRandomly = function (callback) {
     var bot = self.bots[botId];
     if (Math.random() * 1000 > 990 || self.isBotOnEdge(bot)) {
       var randIndex = Math.floor(Math.random() * 4)
-      bot.ops = self.botMoves[randIndex];
+      bot.op = self.botMoves[randIndex];
     }
     callback(bot);
   });
