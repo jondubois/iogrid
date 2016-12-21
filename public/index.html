@@ -98,8 +98,8 @@
           game.load.image('background', BACKGROUND_TEXTURE);
         }
 
-        function generateHitArea(user) {
-          var userRadius = Math.round(user.width / 2);
+        function generateHitArea(user, safetyFactor) {
+          var userRadius = Math.round(user.width / 2) * (safetyFactor || 1);
           return {
             user: user,
             minX: user.x - userRadius,
@@ -109,47 +109,39 @@
           };
         }
 
+        function getVectorLength(v) {
+          return Math.sqrt(v.x * v.x + v.y * v.y);
+        }
+
+        var playerOverlaps = [];
+
         function preventUserOverlap() {
+          playerOverlaps = [];
           var userTree = new rbush();
           var hitAreaList = [];
 
           for (var h in users) {
             if (users.hasOwnProperty(h)) {
               var curUser = users[h];
-              curUser.hitArea = generateHitArea(curUser);
+              curUser.hitArea = generateHitArea(curUser, 1.2);
               hitAreaList.push(curUser.hitArea);
             }
           }
           userTree.load(hitAreaList);
 
-          for (var i in users) {
-            if (users.hasOwnProperty(i)) {
-              var curUser = users[i];
-              userTree.remove(curUser.hitArea);
-              var hitList = userTree.search(curUser.hitArea);
-              userTree.insert(curUser.hitArea);
-              hitList.forEach(function (hit) {
-                var userA = new SAT.Circle(new SAT.Vector(curUser.x, curUser.y), Math.round(curUser.width / 2));
-                var userB = new SAT.Circle(new SAT.Vector(hit.user.x, hit.user.y), Math.round(hit.user.width / 2));
-                var response = new SAT.Response();
-                var collided = SAT.testCircleCircle(userA, userB, response);
-                if (collided) {
-                  var overlapV = response.overlapV;
-                  var halfVector = {
-                    x: Math.round(overlapV.x / 2),
-                    y: Math.round(overlapV.y / 2)
-                  };
-                  curUser.x -= halfVector.x;
-                  curUser.y -= halfVector.y;
-                  hit.user.x += halfVector.x;
-                  hit.user.y += halfVector.y;
+          userTree.remove(player.hitArea);
+          var hitList = userTree.search(player.hitArea);
 
-                  updateUserGraphics(curUser);
-                  updateUserGraphics(hit.user);
-                }
-              });
-            }
-          }
+          hitList.forEach(function (hit) {
+            playerOverlaps.push({
+              id: hit.user.id,
+              swid: hit.user.swid,
+              x: hit.user.x,
+              y: hit.user.y,
+              width: hit.user.width,
+              height: hit.user.height
+            });
+          });
         }
 
         function handleUserStates(userStateList) {
@@ -300,6 +292,7 @@
           var user = {};
           users[userData.id] = user;
           user.id = userData.id;
+          user.swid = userData.swid;
           user.name = userData.name;
 
           var textStyle = {
@@ -432,6 +425,9 @@
           if (keys.left.isDown) {
             playerOp.l = 1;
             didAction = true;
+          }
+          if (playerOverlaps.length) {
+            playerOp.ols = playerOverlaps;
           }
           if (didAction) {
             // Send the player operations for the server to process.

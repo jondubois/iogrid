@@ -52,14 +52,18 @@ ChannelGrid.prototype.publish = function (channelName, objects) {
 
   objects.forEach(function (obj) {
     var cell = self._getCellCoordinates(obj);
-    grid[cell.r][cell.c].push(obj);
+    if (grid[cell.r] && grid[cell.r][cell.c]) {
+      grid[cell.r][cell.c].push(obj);
+    }
   });
 
   for (var r = 0; r < this.rows; r++) {
     for (var c = 0; c < this.cols; c++) {
-      var states = grid[r][c];
-      if (states.length) {
-        self.exchange.publish(self._getGridChannelName(channelName, c, r), states);
+      if (grid[r] && grid[r][c]) {
+        var states = grid[r][c];
+        if (states.length) {
+          self.exchange.publish(self._getGridChannelName(channelName, c, r), states);
+        }
       }
     }
   }

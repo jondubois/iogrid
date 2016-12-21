@@ -7,10 +7,11 @@ var healthChecker = require('sc-framework-health-check');
 var CoinManager = require('./coin-manager').CoinManager;
 var uuid = require('uuid');
 var ChannelGrid = require('./public/channel-grid').ChannelGrid;
+var SAT = require('sat');
 var rbush = require('rbush');
 
-var WORLD_WIDTH = 4000;
-var WORLD_HEIGHT = 4000;
+var WORLD_WIDTH = 500;
+var WORLD_HEIGHT = 500;
 var WORLD_CELL_WIDTH = 1000;
 var WORLD_CELL_HEIGHT = 1000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
@@ -18,14 +19,13 @@ var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
 var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
 
 var PLAYER_UPDATE_INTERVAL = 20;
-var PLAYER_MOVE_SPEED = 7;
-var PLAYER_WIDTH = 70;
-var PLAYER_HEIGHT = 70;
+var PLAYER_MOVE_SPEED = 5;
+var PLAYER_DIAMETER = 70;
 
 var COIN_UPDATE_INTERVAL = 1000;
 var COIN_TAKEN_INTERVAL = 20;
 var COIN_DROP_INTERVAL = 1000;
-var COIN_MAX_COUNT = 200;
+var COIN_MAX_COUNT = 10;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
 
 var users = {};
@@ -140,6 +140,31 @@ module.exports.run = function (worker) {
     }
   });
 
+  function getVectorLength(v) {
+    return Math.sqrt(v.x * v.x + v.y * v.y);
+  };
+
+  function resolveCollision(player, otherPlayer) {
+    var currentUser = new SAT.Circle(new SAT.Vector(player.x, player.y), Math.round(player.width / 2));
+    var otherUser = new SAT.Circle(new SAT.Vector(otherPlayer.x, otherPlayer.y), Math.round(otherPlayer.width / 2));
+    var response = new SAT.Response();
+    var collided = SAT.testCircleCircle(currentUser, otherUser, response);
+
+    if (collided) {
+      var olv = response.overlapV;
+      player.x -= olv.x;
+      player.y -= olv.y;
+    }
+  }
+
+  scServer.exchange.subscribe('internal/player-resolve-overlay/' + serverWorkerId)
+  .watch(function (data) {
+    var curUser = users[data.playerId];
+    if (curUser) {
+      resolveCollision(curUser, data.otherPlayer);
+    }
+  });
+
   var flushPlayerData = function () {
     var playerStates = [];
     for (var i in users) {
@@ -181,22 +206,27 @@ module.exports.run = function (worker) {
   function updatePlayerState(player, playerOp) {
     var wasStateUpdated = false;
 
+    var movementVector = {x: 0, y: 0};
+
     if (playerOp.u) {
-      player.y -= PLAYER_MOVE_SPEED;
+      movementVector.y = -PLAYER_MOVE_SPEED;
       wasStateUpdated = true;
     }
     if (playerOp.d) {
-      player.y += PLAYER_MOVE_SPEED;
+      movementVector.y = PLAYER_MOVE_SPEED;
       wasStateUpdated = true;
     }
     if (playerOp.r) {
-      player.x += PLAYER_MOVE_SPEED;
+      movementVector.x = PLAYER_MOVE_SPEED;
       wasStateUpdated = true;
     }
     if (playerOp.l) {
-      player.x -= PLAYER_MOVE_SPEED;
+      movementVector.x = -PLAYER_MOVE_SPEED;
       wasStateUpdated = true;
     }
+
+    player.x += movementVector.x;
+    player.y += movementVector.y;
 
     var halfWidth = Math.round(player.width / 2);
     var halfHeight = Math.round(player.height / 2);
@@ -215,6 +245,22 @@ module.exports.run = function (worker) {
       player.y = halfHeight;
     } else if (bottomY > WORLD_HEIGHT) {
       player.y = WORLD_HEIGHT - halfHeight;
+    }
+
+    var overlaps = playerOp.ols;
+    if (overlaps && overlaps.length) {
+      overlaps.forEach(function (otherPlayer) {
+        // To prevent cheating, we should resolve the other player's position within their host process.
+        // We assume that at least one of the players will give us accurate collision information.
+        // Since there is no strong incentive for both players to try to cheat collision detection, this is a
+        // safe enough assumption.
+        resolveCollision(player, otherPlayer);
+
+        scServer.exchange.publish('internal/player-resolve-overlay/' + otherPlayer.swid, {
+          playerId: otherPlayer.id,
+          otherPlayer: player
+        });
+      });
     }
     return wasStateUpdated;
   }
@@ -238,7 +284,7 @@ module.exports.run = function (worker) {
     });
 
     socket.on('join', function (playerOptions, respond) {
-      var startingPos = getRandomPosition(PLAYER_WIDTH, PLAYER_HEIGHT);
+      var startingPos = getRandomPosition(PLAYER_DIAMETER, PLAYER_DIAMETER);
       socket.player = {
         id: uuid.v4(),
         swid: serverWorkerId,
@@ -247,8 +293,8 @@ module.exports.run = function (worker) {
         x: startingPos.x,
         y: startingPos.y,
         score: 0,
-        width: PLAYER_WIDTH,
-        height: PLAYER_HEIGHT
+        width: PLAYER_DIAMETER,
+        height: PLAYER_DIAMETER
       };
 
       users[socket.player.id] = socket.player;
