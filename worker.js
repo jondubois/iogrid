@@ -122,8 +122,12 @@ module.exports.run = function (worker) {
     playerIds.forEach(function (id) {
       var targetPlayerState = game.users[id];
       if (targetPlayerState) {
+        // The cell controller can overwrite every property except for the op
+        // and data properties.
         var freshOp = targetPlayerState.op;
+        var freshData = targetPlayerState.data;
         var sourcePlayerState = data.player[id];
+
         for (var i in targetPlayerState) {
           if (targetPlayerState.hasOwnProperty(i)) {
             delete targetPlayerState[i];
@@ -138,6 +142,9 @@ module.exports.run = function (worker) {
           targetPlayerState.op = freshOp;
         } else {
           delete targetPlayerState.op;
+        }
+        if (freshData) {
+          targetPlayerState.data = freshData;
         }
       }
     });
@@ -265,7 +272,7 @@ module.exports.run = function (worker) {
   .watch(function (data) {
     var curUser = game.users[data.userId];
     if (curUser) {
-      curUser.score += data.value;
+      curUser.data.score += data.value;
     }
   });
 
@@ -372,10 +379,13 @@ module.exports.run = function (worker) {
         color: playerOptions.color,
         x: startingPos.x,
         y: startingPos.y,
-        score: 0,
         width: PLAYER_DIAMETER,
         height: PLAYER_DIAMETER,
         mass: PLAYER_MASS,
+        score: 0,
+        data: {
+          score: 0
+        },
         processed: Date.now()
       };
 

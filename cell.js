@@ -31,6 +31,11 @@ function applyPlayerOps(players) {
     } else {
       moveSpeed = options.playerMoveSpeed;
     }
+    if (player.data) {
+      if (player.data.score) {
+        player.score = player.data.score;
+      }
+    }
 
     if (playerOp) {
       var movementVector = {x: 0, y: 0};
