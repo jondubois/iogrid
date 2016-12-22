@@ -23,7 +23,6 @@ function applyPlayerOps(players) {
   playerIds.forEach(function (playerId) {
     var player = players[playerId];
     var playerOp = player.op;
-    var moved = false;
 
     if (playerOp) {
       var movementVector = {x: 0, y: 0};
@@ -135,7 +134,7 @@ function resolveCollision(player, otherPlayer) {
   var response = new SAT.Response();
   var collided = SAT.testCircleCircle(currentUser, otherUser, response);
 
-  if (collided) {
+  if (collided && player.op) {
     var olv = response.overlapV;
     player.x -= olv.x;
     player.y -= olv.y;
