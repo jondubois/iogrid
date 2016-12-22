@@ -13,7 +13,7 @@ var BotManager = function (options) {
   this.botMoveSpeed = options.botMoveSpeed || BOT_DEFAULT_SPEED;
   this.botMass = options.botMass || BOT_DEFAULT_MASS;
 
-  this.users = options.users;
+  this.players = options.players;
   this.bots = {};
   this.botCount = 0;
 
@@ -80,7 +80,7 @@ BotManager.prototype.addBot = function (options) {
     }
   }
   this.bots[botId] = bot;
-  this.users[botId] = bot;
+  this.players[botId] = bot;
   this.botCount++;
 };
 
@@ -105,7 +105,7 @@ BotManager.prototype.moveBotsRandomly = function () {
 BotManager.prototype.removeBot = function (botId) {
   if (this.bots[botId]) {
     delete this.bots[botId];
-    delete this.users[botId];
+    delete this.players[botId];
     this.botCount--;
   }
 };

@@ -14,7 +14,7 @@ var CoinManager = function (options) {
   this.worldWidth = options.worldWidth;
   this.worldHeight = options.worldHeight;
 
-  this.users = options.users;
+  this.players = options.players;
   this.coins = {};
   this.coinCount = 0;
 };
@@ -23,8 +23,8 @@ CoinManager.prototype.generateRandomAvailablePosition = function (coinRadius) {
   var coinDiameter = coinRadius * 2;
   var circles = [];
 
-  for (var i in this.users) {
-    var curUser = this.users[i];
+  for (var i in this.players) {
+    var curUser = this.players[i];
     circles.push(new SAT.Circle(new SAT.Vector(curUser.x, curUser.y), this.playerNoDropRadius));
   }
 

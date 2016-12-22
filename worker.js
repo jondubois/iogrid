@@ -36,10 +36,10 @@ var COIN_MAX_COUNT = 10;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
 
 var game = {
-  users: {}
+  players: {}
 };
 
-// TODO: Need to fix the problem if two users collide on the edge of two cells in the grid
+// TODO: Need to fix the problem if two players collide on the edge of two cells in the grid
 // with each player in their own cell.
 
 function getRandomPosition(spriteWidth, spriteHeight) {
@@ -94,7 +94,7 @@ module.exports.run = function (worker) {
     worldHeight: WORLD_HEIGHT,
     maxCoinCount: COIN_MAX_COUNT,
     playerNoDropRadius: COIN_PLAYER_NO_DROP_RADIUS,
-    users: game.users
+    players: game.players
   });
 
   var botManager = new BotManager({
@@ -103,7 +103,7 @@ module.exports.run = function (worker) {
     worldHeight: WORLD_HEIGHT,
     botMoveSpeed: BOT_MOVE_SPEED,
     botMass: BOT_MASS,
-    users: game.users
+    players: game.players
   });
 
   // This allows us to break up our channels into a grid of cells which we can
@@ -116,11 +116,11 @@ module.exports.run = function (worker) {
     exchange: scServer.exchange
   });
 
-  scServer.exchange.subscribe('internal/worker-data/' + serverWorkerId)
+  scServer.exchange.subscribe('internal/cell-processing-outbound/' + serverWorkerId)
   .watch(function (data) {
     var playerIds = Object.keys(data.player);
     playerIds.forEach(function (id) {
-      var targetPlayerState = game.users[id];
+      var targetPlayerState = game.players[id];
       if (targetPlayerState) {
         // The cell controller can overwrite every property except for the op
         // and data properties.
@@ -169,7 +169,7 @@ module.exports.run = function (worker) {
     var cellIndex = worker.id + h * worker.options.workers;
     // Track cell indexes handled by our current worker.
     workerCellIndexes[cellIndex] = true;
-    channelGrid.watchCellAtIndex('internal/cell-data-processing', cellIndex, gridCellDataHandler);
+    channelGrid.watchCellAtIndex('internal/cell-processing-inbound', cellIndex, gridCellDataHandler);
   }
 
   function dispatchProcessedData(processedCellData) {
@@ -214,8 +214,10 @@ module.exports.run = function (worker) {
       });
     });
 
+    // This after we've processed the data in our cell controller, we will send it back
+    // to the appropriate workers (based on swid) which will then distribute it to players.
     wokerIdList.forEach(function (swid) {
-      scServer.exchange.publish('internal/worker-data/' + swid, workerData[swid]);
+      scServer.exchange.publish('internal/cell-processing-outbound/' + swid, workerData[swid]);
     });
   };
 
@@ -227,7 +229,6 @@ module.exports.run = function (worker) {
         cellData[state.type] = {};
       }
 
-      // TODO: CELLL
       // The reason why we don't just copy the state from the upstream worker
       // every time is because otherwise upstream changes may occasionally conflict
       // with changes made by our cell controller.
@@ -243,10 +244,6 @@ module.exports.run = function (worker) {
 
     cellController.run(cellControllerOptions, cellData, dispatchProcessedData);
   }
-  // TODO
-  // setInterval(function () {
-  //   cellController.run(cellControllerOptions, cellData, dispatchProcessedData);
-  // }, CELL_UPDATE_INTERVAL);
 
   // Check if the user hit a coin.
   // Because the user and the coin may potentially be hosted on different
@@ -256,7 +253,7 @@ module.exports.run = function (worker) {
   // fact hit the coin. This two-step check is necessary because we cannot trust position data from the client.
   scServer.exchange.subscribe('external/coin-hit-check/' + serverWorkerId)
   .watch(function (data) {
-    var curUser = game.users[data.userId];
+    var curUser = game.players[data.userId];
     if (curUser && data.coins && data.coins.length) {
       data.coins.forEach(function (coinData) {
         scServer.exchange.publish('internal/coin-hit-check/' + coinData.swid, {
@@ -270,7 +267,7 @@ module.exports.run = function (worker) {
 
   scServer.exchange.subscribe('internal/player-increase-score/' + serverWorkerId)
   .watch(function (data) {
-    var curUser = game.users[data.userId];
+    var curUser = game.players[data.userId];
     if (curUser) {
       curUser.data.score += data.value;
     }
@@ -296,17 +293,19 @@ module.exports.run = function (worker) {
 
   function flushPlayerData() {
     var playerStates = [];
-    for (var i in game.users) {
-      if (game.users.hasOwnProperty(i)) {
-        playerStates.push(game.users[i]);
+    for (var i in game.players) {
+      if (game.players.hasOwnProperty(i)) {
+        playerStates.push(game.players[i]);
       }
     }
 
+    // External channel which clients can subscribe to.
     channelGrid.publish('cell-data', playerStates);
 
     // Publish to internal channel for processing (e.g. Collision
     // detection and resolution, scoring, etc...)
-    channelGrid.publish('internal/cell-data-processing', playerStates);
+    // This data will be processed by cell controllers.
+    channelGrid.publish('internal/cell-processing-inbound', playerStates);
 
     playerStates.forEach(function (player) {
       delete player.op;
@@ -389,7 +388,7 @@ module.exports.run = function (worker) {
         processed: Date.now()
       };
 
-      game.users[socket.player.id] = socket.player;
+      game.players[socket.player.id] = socket.player;
 
       respond(null, socket.player);
     });
@@ -407,8 +406,7 @@ module.exports.run = function (worker) {
     socket.on('disconnect', function () {
       if (socket.player) {
         var userId = socket.player.id;
-        delete game.users[userId];
-        delete game.users[userId];
+        delete game.players[userId];
       }
     });
   });
