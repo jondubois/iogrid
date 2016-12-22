@@ -14,7 +14,7 @@ var cellController = require('./cell');
 
 var WORLD_WIDTH = 2000;
 var WORLD_HEIGHT = 2000;
-var WORLD_CELL_WIDTH = 500;
+var WORLD_CELL_WIDTH = 200;
 var WORLD_CELL_HEIGHT = 500;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
@@ -23,16 +23,17 @@ var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
 var PLAYER_UPDATE_INTERVAL = 20;
 var PLAYER_MOVE_SPEED = 7;
 var PLAYER_DIAMETER = 70;
+var PLAYER_MASS = 5;
 
+var BOT_COUNT = 5;
+var BOT_MOVE_SPEED = 3;
+var BOT_MASS = 10;
 
 var COIN_UPDATE_INTERVAL = 1000;
 var COIN_TAKEN_INTERVAL = 20;
 var COIN_DROP_INTERVAL = 1000;
 var COIN_MAX_COUNT = 10;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
-
-var BOT_COUNT = 1;
-var BOT_MOVE_SPEED = 3;
 
 var game = {
   users: {}
@@ -101,6 +102,7 @@ module.exports.run = function (worker) {
     worldWidth: WORLD_WIDTH,
     worldHeight: WORLD_HEIGHT,
     botMoveSpeed: BOT_MOVE_SPEED,
+    botMass: BOT_MASS,
     users: game.users
   });
 
@@ -373,6 +375,7 @@ module.exports.run = function (worker) {
         score: 0,
         width: PLAYER_DIAMETER,
         height: PLAYER_DIAMETER,
+        mass: PLAYER_MASS,
         processed: Date.now()
       };
 

@@ -3,6 +3,7 @@ var SAT = require('sat');
 
 var BOT_DEFAULT_RADIUS = 40;
 var BOT_DEFAULT_SPEED = 1;
+var BOT_DEFAULT_MASS = 10;
 var BOT_CHANGE_DIRECTION_PROBABILITY = 0.01;
 
 var BotManager = function (options) {
@@ -10,6 +11,7 @@ var BotManager = function (options) {
   this.worldWidth = options.worldWidth;
   this.worldHeight = options.worldHeight;
   this.botMoveSpeed = options.botMoveSpeed || BOT_DEFAULT_SPEED;
+  this.botMass = options.botMass || BOT_DEFAULT_MASS;
 
   this.users = options.users;
   this.bots = {};
@@ -55,6 +57,7 @@ BotManager.prototype.addBot = function (options) {
     color: options.color || 1000,
     score: options.score || 0,
     speed: options.speed || this.botMoveSpeed,
+    mass: options.mass || this.botMass,
     width: diameter,
     height: diameter,
     op: {},

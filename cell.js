@@ -143,7 +143,14 @@ function resolveCollision(player, otherPlayer) {
 
   if (collided) {
     var olv = response.overlapV;
-    player.x -= olv.x;
-    player.y -= olv.y;
+
+    var totalMass = player.mass + otherPlayer.mass;
+    var playerBuff = player.mass / totalMass;
+    var otherPlayerBuff = otherPlayer.mass / totalMass;
+
+    player.x -= olv.x * otherPlayerBuff;
+    player.y -= olv.y * otherPlayerBuff;
+    otherPlayer.x += olv.x * playerBuff;
+    otherPlayer.y += olv.y * playerBuff;
   }
 }
