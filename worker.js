@@ -14,7 +14,7 @@ var cellController = require('./cell');
 
 var WORLD_WIDTH = 2000;
 var WORLD_HEIGHT = 2000;
-var WORLD_CELL_WIDTH = 200;
+var WORLD_CELL_WIDTH = 500;
 var WORLD_CELL_HEIGHT = 500;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
@@ -25,7 +25,7 @@ var PLAYER_MOVE_SPEED = 7;
 var PLAYER_DIAMETER = 70;
 var PLAYER_MASS = 5;
 
-var BOT_COUNT = 5;
+var BOT_COUNT = 1;
 var BOT_MOVE_SPEED = 3;
 var BOT_MASS = 10;
 
