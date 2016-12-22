@@ -20,9 +20,10 @@ var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
 var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
 
-var PLAYER_UPDATE_INTERVAL = 30;
-var PLAYER_MOVE_SPEED = 10;
+var PLAYER_UPDATE_INTERVAL = 20;
+var PLAYER_MOVE_SPEED = 7;
 var PLAYER_DIAMETER = 70;
+
 
 var COIN_UPDATE_INTERVAL = 1000;
 var COIN_TAKEN_INTERVAL = 20;
@@ -30,11 +31,15 @@ var COIN_DROP_INTERVAL = 1000;
 var COIN_MAX_COUNT = 10;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
 
-var BOT_COUNT = 2;
+var BOT_COUNT = 1;
+var BOT_MOVE_SPEED = 3;
 
 var game = {
   users: {}
 };
+
+// TODO: Need to fix the problem if two users collide on the edge of two cells in the grid
+// with each player in their own cell.
 
 function getRandomPosition(spriteWidth, spriteHeight) {
   var halfSpriteWidth = spriteWidth / 2;
@@ -95,6 +100,7 @@ module.exports.run = function (worker) {
     serverWorkerId: serverWorkerId,
     worldWidth: WORLD_WIDTH,
     worldHeight: WORLD_HEIGHT,
+    botMoveSpeed: BOT_MOVE_SPEED,
     users: game.users
   });
 
@@ -143,6 +149,12 @@ module.exports.run = function (worker) {
 
   var cellsPerWorker = WORLD_CELLS / worker.options.workers;
   var workerCellIndexes = {};
+  var cellControllerOptions = {
+    worldWidth: WORLD_WIDTH,
+    worldHeight: WORLD_HEIGHT,
+    playerMoveSpeed: PLAYER_MOVE_SPEED
+  };
+  var cellData = {};
 
   for (var h = 0; h < cellsPerWorker; h++) {
     var cellIndex = worker.id + h * worker.options.workers;
@@ -163,6 +175,11 @@ module.exports.run = function (worker) {
       ids.forEach(function (id) {
         var state = stateList[id];
         var swid = state.swid;
+
+        if (!cellData[type]) {
+          cellData[type] = {};
+        }
+        cellData[type][id] = state;
 
         if (!workerData[swid]) {
           workerData[swid] = {};
@@ -193,25 +210,34 @@ module.exports.run = function (worker) {
     });
   };
 
-  var cellControllerOptions = {
-    worldWidth: WORLD_WIDTH,
-    worldHeight: WORLD_HEIGHT,
-    playerMoveSpeed: PLAYER_MOVE_SPEED
-  };
-  var cellData = {};
+  var lastProcessing = Date.now();
 
   function gridCellDataHandler(stateList) {
     stateList.forEach(function (state) {
       if (!cellData[state.type]) {
         cellData[state.type] = {};
       }
+
+      // TODO: CELLL
+      // The reason why we don't just copy the state from the upstream worker
+      // every time is because otherwise upstream changes may occasionally conflict
+      // with changes made by our cell controller.
+      // We copy the 'op' property which can carry single-use operations/actions and
+      // the 'data' property which can carry any long-term custom data.
       if (!cellData[state.type][state.id]) {
         cellData[state.type][state.id] = state;
       }
-      cellData[state.type][state.id].op = state.op;
+      var cachedState = cellData[state.type][state.id];
+      cachedState.op = state.op;
+      cachedState.data = state.data;
     });
+
     cellController.run(cellControllerOptions, cellData, dispatchProcessedData);
   }
+  // TODO
+  // setInterval(function () {
+  //   cellController.run(cellControllerOptions, cellData, dispatchProcessedData);
+  // }, CELL_UPDATE_INTERVAL);
 
   // Check if the user hit a coin.
   // Because the user and the coin may potentially be hosted on different
@@ -296,9 +322,7 @@ module.exports.run = function (worker) {
   }
 
   function updatePlayers() {
-    // botManager.moveBotsRandomly(function (bot) { // TODO
-    //   updatePlayerState(bot, bot.op, {moveSpeed: bot.speed});
-    // });
+    botManager.moveBotsRandomly();
     flushPlayerData();
   }
 
@@ -314,14 +338,14 @@ module.exports.run = function (worker) {
   setInterval(dropCoin, COIN_DROP_INTERVAL);
 
   for (var b = 0; b < BOT_COUNT; b++) {
-    // botManager.addBot(); // TODO
+    botManager.addBot(); // TODO
   }
 
   /*
     In here we handle our incoming realtime connections and listen for events.
   */
   scServer.on('connection', function (socket) {
-    console.log('SWID:', serverWorkerId);
+    console.log('USER SWID:', serverWorkerId);
     socket.on('getWorldInfo', function (data, respond) {
       // The first argument to respond can optionally be an Error object.
       respond(null, {

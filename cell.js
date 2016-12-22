@@ -9,11 +9,12 @@ module.exports.run = function (opts, cellData, done) {
   var self = this;
   options = opts;
 
+
   var players = cellData.player || {};
 
   removeStalePlayers(players);
   findPlayerOverlaps(players);
-  applyPlayerOps(players, options);
+  applyPlayerOps(players);
 
   done(cellData);
 };
@@ -22,22 +23,29 @@ function applyPlayerOps(players) {
   var playerIds = Object.keys(players);
   playerIds.forEach(function (playerId) {
     var player = players[playerId];
+
     var playerOp = player.op;
+    var moveSpeed;
+    if (player.subtype == 'bot') {
+      moveSpeed = player.speed;
+    } else {
+      moveSpeed = options.playerMoveSpeed;
+    }
 
     if (playerOp) {
       var movementVector = {x: 0, y: 0};
 
       if (playerOp.u) {
-        movementVector.y = -options.playerMoveSpeed;
+        movementVector.y = -moveSpeed;
       }
       if (playerOp.d) {
-        movementVector.y = options.playerMoveSpeed;
+        movementVector.y = moveSpeed;
       }
       if (playerOp.r) {
-        movementVector.x = options.playerMoveSpeed;
+        movementVector.x = moveSpeed;
       }
       if (playerOp.l) {
-        movementVector.x = -options.playerMoveSpeed;
+        movementVector.x = -moveSpeed;
       }
 
       player.x += movementVector.x;
@@ -69,7 +77,6 @@ function applyPlayerOps(players) {
       });
       delete player.overlaps;
     }
-    delete player.op;
   });
 }
 
@@ -134,12 +141,9 @@ function resolveCollision(player, otherPlayer) {
   var response = new SAT.Response();
   var collided = SAT.testCircleCircle(currentUser, otherUser, response);
 
-  if (collided && player.op) {
+  if (collided) {
     var olv = response.overlapV;
     player.x -= olv.x;
     player.y -= olv.y;
-    // TODO: Remove
-    // otherPlayer.x += olv.x;
-    // otherPlayer.y += olv.y;
   }
 }

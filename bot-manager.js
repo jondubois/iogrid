@@ -2,12 +2,14 @@ var uuid = require('uuid');
 var SAT = require('sat');
 
 var BOT_DEFAULT_RADIUS = 40;
-var BOT_DEFAULT_SPEED = 3;
+var BOT_DEFAULT_SPEED = 1;
+var BOT_CHANGE_DIRECTION_PROBABILITY = 0.01;
 
 var BotManager = function (options) {
   this.serverWorkerId = options.serverWorkerId;
   this.worldWidth = options.worldWidth;
   this.worldHeight = options.worldHeight;
+  this.botMoveSpeed = options.botMoveSpeed || BOT_DEFAULT_SPEED;
 
   this.users = options.users;
   this.bots = {};
@@ -52,7 +54,7 @@ BotManager.prototype.addBot = function (options) {
     name: options.name || 'bot-' + Math.round(Math.random() * 10000),
     color: options.color || 1000,
     score: options.score || 0,
-    speed: options.speed || BOT_DEFAULT_SPEED,
+    speed: options.speed || this.botMoveSpeed,
     width: diameter,
     height: diameter,
     op: {},
@@ -79,15 +81,21 @@ BotManager.prototype.addBot = function (options) {
   this.botCount++;
 };
 
-BotManager.prototype.moveBotsRandomly = function (callback) {
+BotManager.prototype.moveBotsRandomly = function () {
   var self = this;
   Object.keys(this.bots).forEach(function (botId) {
     var bot = self.bots[botId];
-    if (Math.random() * 1000 > 990 || self.isBotOnEdge(bot)) {
+    if (Math.random() <= BOT_CHANGE_DIRECTION_PROBABILITY || self.isBotOnEdge(bot)) {
       var randIndex = Math.floor(Math.random() * 4)
-      bot.op = self.botMoves[randIndex];
+      // The op property will be picked up in our cell controller (cell.js)
+      // and the bot will be moved as if it were a regular player.
+      bot.data = {
+        repeatOp: self.botMoves[randIndex]
+      };
     }
-    callback(bot);
+    if (bot.data && bot.data.repeatOp) {
+      bot.op = bot.data.repeatOp;
+    }
   });
 };
 
