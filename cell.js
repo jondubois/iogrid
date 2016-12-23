@@ -5,10 +5,10 @@ var STALE_TIMEOUT = 1000;
 
 var options;
 
-module.exports.run = function (opts, cellData, done) {
+module.exports.run = function (input, done) {
   var self = this;
-  options = opts;
-
+  options = input.options;
+  var cellData = input.cellData;
 
   var players = cellData.player || {};
 
@@ -16,7 +16,18 @@ module.exports.run = function (opts, cellData, done) {
   findPlayerOverlaps(players);
   applyPlayerOps(players);
 
-  done(cellData);
+  /*
+    If we call done() without any arguments, it will dispatch the
+    entire tree for the cell back to upstream processes.
+    If we pass a list of states which were received in this current
+    iteration (e.g. input.states), it will only send back those states
+    so it's more efficient.
+    Note that if you add new states to your cellData or modify states
+    which are not in input.states, you need to remember to add them
+    to the list too or else they won't get processed.
+  */
+  // done(input.states); // TODO
+  done();
 };
 
 function applyPlayerOps(players) {
@@ -89,10 +100,8 @@ function removeStalePlayers(players) {
   var playerIds = Object.keys(players);
   playerIds.forEach(function (playerId) {
     var player = players[playerId];
-    if (Date.now() - player.processed > STALE_TIMEOUT) {
+    if (player.op && player.op.delete || Date.now() - player.processed > STALE_TIMEOUT) {
       delete players[playerId];
-    } else {
-      player.processed = Date.now();
     }
   });
 }

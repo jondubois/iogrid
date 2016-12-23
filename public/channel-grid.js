@@ -7,6 +7,7 @@ if (typeof module == 'undefined') {
 var ChannelGrid = function (options) {
   this.worldWidth = options.worldWidth;
   this.worldHeight = options.worldHeight;
+  this.cellOverlapDistance = options.cellOverlapDistance;
   this.rows = options.rows;
   this.cols = options.cols;
 
@@ -46,6 +47,43 @@ ChannelGrid.prototype.getCellCoordinates = function (object) {
   }
 };
 
+ChannelGrid.prototype.getAllCellCoordinates = function (object) {
+  var overlapDist = this.cellOverlapDistance;
+
+  var objectArea = {
+    minX: object.x - overlapDist,
+    minY: object.y - overlapDist,
+    maxX: object.x + overlapDist,
+    maxY: object.y + overlapDist
+  };
+  var minCell = this.getCellCoordinates({
+    x: objectArea.minX,
+    y: objectArea.minY
+  });
+  var maxCell = this.getCellCoordinates({
+    x: objectArea.maxX,
+    y: objectArea.maxY
+  });
+  var gridArea = {
+    minC: minCell.c,
+    minR: minCell.r,
+    maxC: maxCell.c,
+    maxR: maxCell.r
+  };
+
+  var affectedCells = [];
+
+  for (var r = gridArea.minR; r <= gridArea.maxR; r++) {
+    for (var c = gridArea.minC; c <= gridArea.maxC; c++) {
+      affectedCells.push({
+        r: r,
+        c: c
+      });
+    }
+  }
+  return affectedCells;
+};
+
 ChannelGrid.prototype._getGridChannelName = function (channelName, col, row) {
   return 'cell(' + col + ',' + row + ')' + channelName;
 };
@@ -56,10 +94,12 @@ ChannelGrid.prototype.publish = function (channelName, objects) {
   var grid = this._generateEmptyGrid(this.rows, this.cols);
 
   objects.forEach(function (obj) {
-    var cell = self.getCellCoordinates(obj);
-    if (grid[cell.r] && grid[cell.r][cell.c]) {
-      grid[cell.r][cell.c].push(obj);
-    }
+    var affectedCells = self.getAllCellCoordinates(obj);
+    affectedCells.forEach(function (cell) {
+      if (grid[cell.r] && grid[cell.r][cell.c]) {
+        grid[cell.r][cell.c].push(obj);
+      }
+    });
   });
 
   for (var r = 0; r < this.rows; r++) {

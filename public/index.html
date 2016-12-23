@@ -36,7 +36,7 @@
         users = {};
         coins = {};
         // For collision detection
-        var coinTree = rbush();
+        // var coinTree = rbush();
         var channelGrid;
 
         var WORLD_WIDTH;
@@ -45,7 +45,7 @@
         var WORLD_ROWS;
         var WORLD_CELL_WIDTH;
         var WORLD_CELL_HEIGHT;
-        var PLAYER_LINE_OF_SIGHT = 500;//(window.innerWidth / 2) * 1.5;
+        var PLAYER_LINE_OF_SIGHT = 500;//(window.innerWidth / 2) * 1.5; // TODO
         var USER_INACTIVITY_TIMEOUT = 500;
         var COIN_INACTIVITY_TIMEOUT = 3000;
         var ENVIRONMENT;
@@ -62,6 +62,7 @@
           WORLD_ROWS = data.rows;
           WORLD_CELL_WIDTH = data.cellWidth;
           WORLD_CELL_HEIGHT = data.cellHeight;
+          WORLD_CELL_OVERLAP_DISTANCE = data.cellOverlapDistance
           SERVER_WORKER_ID = data.serverWorkerId;
           ENVIRONMENT = data.environment;
 
@@ -70,6 +71,7 @@
             worldHeight: WORLD_HEIGHT,
             rows: WORLD_ROWS,
             cols: WORLD_COLS,
+            cellOverlapDistance: WORLD_CELL_OVERLAP_DISTANCE,
             exchange: socket
           });
 
@@ -98,8 +100,14 @@
           game.load.image('background', BACKGROUND_TEXTURE);
         }
 
-        function handleUserStates(userStateList) {
-          userStateList.forEach(updateUser);
+        function handleCellData(stateList) {
+          stateList.forEach(function (state) {
+            if (state.type == 'player') {
+              updateUser(state);
+            } else if (state.type == 'coin') {
+              renderCoin(state);
+            }
+          });
           bringPlayerToTop();
         }
 
@@ -150,43 +158,43 @@
           }
         }
 
-        function reportApproxCoinCollisionsToServer(user) {
-          // We account for double the area to account for server latency
-          var collisionHalfWidth = user.width;
-          var collisionHalfHeight = user.height;
+        // function reportApproxCoinCollisionsToServer(user) {
+        //   // We account for double the area to account for server latency
+        //   var collisionHalfWidth = user.width;
+        //   var collisionHalfHeight = user.height;
+        //
+        //   var coinNodesHits = coinTree.search({
+        //     minX: user.x - collisionHalfWidth,
+        //     minY: user.y - collisionHalfHeight,
+        //     maxX: user.x + collisionHalfWidth,
+        //     maxY: user.y + collisionHalfHeight
+        //   });
+        //
+        //   var coinsHitList = [];
+        //
+        //   coinNodesHits.forEach(function (coinNode) {
+        //     var curCoin = coins[coinNode.id];
+        //     if (curCoin) {
+        //       coinsHitList.push({
+        //         id: curCoin.id,
+        //         swid: curCoin.swid,
+        //         x: curCoin.x,
+        //         y: curCoin.y,
+        //         r: curCoin.r
+        //       });
+        //     }
+        //   });
+        //   if (coinsHitList.length) {
+        //     socket.publish('external/coin-hit-check/' + SERVER_WORKER_ID, {
+        //       userId: user.id,
+        //       coins: coinsHitList
+        //     });
+        //   }
+        // }
 
-          var coinNodesHits = coinTree.search({
-            minX: user.x - collisionHalfWidth,
-            minY: user.y - collisionHalfHeight,
-            maxX: user.x + collisionHalfWidth,
-            maxY: user.y + collisionHalfHeight
-          });
-
-          var coinsHitList = [];
-
-          coinNodesHits.forEach(function (coinNode) {
-            var curCoin = coins[coinNode.id];
-            if (curCoin) {
-              coinsHitList.push({
-                id: curCoin.id,
-                swid: curCoin.swid,
-                x: curCoin.x,
-                y: curCoin.y,
-                r: curCoin.r
-              });
-            }
-          });
-          if (coinsHitList.length) {
-            socket.publish('external/coin-hit-check/' + SERVER_WORKER_ID, {
-              userId: user.id,
-              coins: coinsHitList
-            });
-          }
-        }
-
-        function removeTakenCoins(coinStates) {
-          coinStates.forEach(removeCoin);
-        }
+        // function removeTakenCoins(coinStates) {
+        //   coinStates.forEach(removeCoin);
+        // }
 
         function updateUserGraphics(user) {
           user.sprite.x = user.x;
@@ -211,10 +219,10 @@
           user.clientProcessed = Date.now();
 
           if (user.id == playerId) {
-            reportApproxCoinCollisionsToServer(user);
-            updateCellWatchers(user, 'cell-data', handleUserStates);
-            updateCellWatchers(user, 'coin-states', renderCoins);
-            updateCellWatchers(user, 'coins-taken', removeTakenCoins);
+            // reportApproxCoinCollisionsToServer(user);
+            updateCellWatchers(user, 'cell-data', handleCellData);
+            // updateCellWatchers(user, 'coin-states', renderCoins);
+            // updateCellWatchers(user, 'coins-taken', removeTakenCoins);
           }
         }
 
@@ -302,31 +310,29 @@
           }
         }
 
-        function renderCoins(coinStateList) {
-          coinStateList.forEach(function (coinData) {
-            if (coins[coinData.id]) {
-              coins[coinData.id].processed = Date.now();
-            } else {
-              var coin = coinData;
-              coins[coinData.id] = coin;
-              coin.sprite = createCircleSprite({
-                diameter: coinData.r * 2,
-                color: Phaser.Color.hexToRGB('#FFBB00')
-              });
-              coin.sprite.x = coinData.x;
-              coin.sprite.y = coinData.y;
-              coin.hitArea = {
-                minX: coinData.x - coinData.r,
-                minY: coinData.y - coinData.r,
-                maxX: coinData.x + coinData.r,
-                maxY: coinData.y + coinData.r,
-                id: coinData.id
-              };
-              coin.processed = Date.now();
+        function renderCoin(coinData) {
+          if (coins[coinData.id]) {
+            coins[coinData.id].processed = Date.now();
+          } else {
+            var coin = coinData;
+            coins[coinData.id] = coin;
+            coin.sprite = createCircleSprite({
+              diameter: coinData.r * 2,
+              color: Phaser.Color.hexToRGB('#FFBB00')
+            });
+            coin.sprite.x = coinData.x;
+            coin.sprite.y = coinData.y;
+            coin.hitArea = {
+              minX: coinData.x - coinData.r,
+              minY: coinData.y - coinData.r,
+              maxX: coinData.x + coinData.r,
+              maxY: coinData.y + coinData.r,
+              id: coinData.id
+            };
+            coin.processed = Date.now();
 
-              coinTree.insert(coin.hitArea);
-            }
-          });
+            coinTree.insert(coin.hitArea);
+          }
         }
 
         function create() {
@@ -344,8 +350,8 @@
               color: playerColor
             }, function (err, playerData) {
               playerId = playerData.id;
-              updateCellWatchers(playerData, 'cell-data', handleUserStates);
-              updateCellWatchers(playerData, 'coin-states', renderCoins);
+              updateCellWatchers(playerData, 'cell-data', handleCellData);
+              // updateCellWatchers(playerData, 'coin-states', renderCoins);
             });
           }
 
