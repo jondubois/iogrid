@@ -1,7 +1,7 @@
 var uuid = require('uuid');
 var SAT = require('sat');
 
-var BOT_DEFAULT_RADIUS = 40;
+var BOT_DEFAULT_DIAMETER = 80;
 var BOT_DEFAULT_SPEED = 1;
 var BOT_DEFAULT_MASS = 10;
 var BOT_CHANGE_DIRECTION_PROBABILITY = 0.01;
@@ -10,6 +10,7 @@ var BotManager = function (options) {
   this.serverWorkerId = options.serverWorkerId;
   this.worldWidth = options.worldWidth;
   this.worldHeight = options.worldHeight;
+  this.botDiameter = options.botDiameter || BOT_DEFAULT_DIAMETER;
   this.botMoveSpeed = options.botMoveSpeed || BOT_DEFAULT_SPEED;
   this.botMass = options.botMass || BOT_DEFAULT_MASS;
 
@@ -44,8 +45,8 @@ BotManager.prototype.addBot = function (options) {
   if (!options) {
     options = {};
   }
-  var radius = options.radius || BOT_DEFAULT_RADIUS;
-  var diameter = radius * 2;
+  var diameter = this.botDiameter;
+  var radius = Math.round(diameter / 2);
   var botId = uuid.v4();
 
   var bot = {

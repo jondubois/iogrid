@@ -28,7 +28,7 @@ ChannelGrid.prototype._generateEmptyGrid = function (rows, cols) {
   return grid;
 };
 
-ChannelGrid.prototype._convertCellIndexToCoordinates = function (index) {
+ChannelGrid.prototype.convertCellIndexToCoordinates = function (index) {
   return {
     r: Math.floor(index / this.cols),
     c: index % this.cols
@@ -84,6 +84,17 @@ ChannelGrid.prototype.getAllCellCoordinates = function (object) {
   return affectedCells;
 };
 
+ChannelGrid.prototype.getAllCellIndexes = function (object) {
+  var self = this;
+  var cellIndexes = [];
+  var coordsList = this.getAllCellCoordinates(object);
+
+  coordsList.forEach(function (coords) {
+    cellIndexes.push(coords.r * self.cols + coords.c);
+  });
+  return cellIndexes;
+};
+
 ChannelGrid.prototype._getGridChannelName = function (channelName, col, row) {
   return 'cell(' + col + ',' + row + ')' + channelName;
 };
@@ -120,7 +131,7 @@ ChannelGrid.prototype.watchCell = function (channelName, col, row, watcher) {
 };
 
 ChannelGrid.prototype.watchCellAtIndex = function (channelName, cellIndex, watcher) {
-  var coords = this._convertCellIndexToCoordinates(cellIndex);
+  var coords = this.convertCellIndexToCoordinates(cellIndex);
   this.watchCell(channelName, coords.c, coords.r, watcher);
 };
 

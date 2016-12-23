@@ -14,12 +14,11 @@ var cellController = require('./cell');
 
 var WORLD_WIDTH = 2000;
 var WORLD_HEIGHT = 2000;
-var WORLD_CELL_WIDTH = 500;
-var WORLD_CELL_HEIGHT = 500;
+var WORLD_CELL_WIDTH = 1000;
+var WORLD_CELL_HEIGHT = 1000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
 var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
-
 /*
   This allows players from two different cells on the grid to
   interact with one another.
@@ -30,12 +29,13 @@ var WORLD_CELL_OVERLAP_DISTANCE = 200;
 
 var PLAYER_UPDATE_INTERVAL = 20;
 var PLAYER_MOVE_SPEED = 7;
-var PLAYER_DIAMETER = 170;
+var PLAYER_DIAMETER = 100;
 var PLAYER_MASS = 5;
 
-var BOT_COUNT = 0;
-var BOT_MOVE_SPEED = 3;
+var BOT_COUNT = 2;
+var BOT_MOVE_SPEED = 4;
 var BOT_MASS = 10;
+var BOT_DIAMETER = 120;
 
 var COIN_UPDATE_INTERVAL = 1000;
 // var COIN_TAKEN_INTERVAL = 20;
@@ -81,7 +81,15 @@ module.exports.run = function (worker) {
 
   httpServer.on('request', app);
 
-  // TODO: Prevent user from subscribing to internal channels
+  scServer.addMiddleware(scServer.MIDDLEWARE_SUBSCRIBE, function (req, next) {
+    if (req.channel.indexOf('internal/') == 0) {
+      var err = new Error('Clients are not allowed to subscribe to the ' + req.channel + ' channel.');
+      err.name = 'ForbiddenSubscribeError';
+      next(err);
+    } else {
+      next();
+    }
+  });
   scServer.addMiddleware(scServer.MIDDLEWARE_PUBLISH_IN, function (req, next) {
     // Only allow clients to publish to channels whose names start with 'external/'
     if (req.channel.indexOf('external/') == 0) {
@@ -106,6 +114,7 @@ module.exports.run = function (worker) {
     serverWorkerId: serverWorkerId,
     worldWidth: WORLD_WIDTH,
     worldHeight: WORLD_HEIGHT,
+    botDiameter: BOT_DIAMETER,
     botMoveSpeed: BOT_MOVE_SPEED,
     botMass: BOT_MASS,
     players: game.players
@@ -128,11 +137,11 @@ module.exports.run = function (worker) {
     playerIds.forEach(function (id) {
       var targetPlayerState = game.players[id];
       if (targetPlayerState) {
+        var sourcePlayerState = data.player[id];
         // The cell controller can overwrite every property except for the op
         // and data properties.
         var freshOp = targetPlayerState.op;
         var freshData = targetPlayerState.data;
-        var sourcePlayerState = data.player[id];
 
         for (var i in targetPlayerState) {
           if (targetPlayerState.hasOwnProperty(i)) {
@@ -194,45 +203,39 @@ module.exports.run = function (worker) {
     }
 
     var targetCellIndex = channelGrid.getCellIndex(state);
+    var affectedCellIndexes = channelGrid.getAllCellIndexes(state);
 
     // After doing processing, if the state object is still in this cell, then
     // we will send the state to the upstream worker.
-    // If the state object is no longer in this cell, we should delete it
-    // from our cellData map.
     if (targetCellIndex == cellIndex) {
       workerData[swid][type][id] = state;
-    } else {
+    }
+
+    // If the state object is no longer in this cell or in the area immediately
+    // surrounding this cell, we should delete it from our cellData map.
+    if (affectedCellIndexes.indexOf(cellIndex) == -1) {
       delete cellData[cellIndex][type][id];
     }
   }
 
-  function dispatchProcessedData(cellIndex, processedCellData) {
+  function dispatchProcessedData(cellIndex) {
     var workerData = {};
+    var currentCellData = cellData[cellIndex];
+    var typeList = Object.keys(currentCellData);
 
-    if (processedCellData) {
-      processedCellData.forEach(function (state) {
+    typeList.forEach(function (type) {
+      var stateList = currentCellData[type];
+      var ids = Object.keys(stateList);
+
+      ids.forEach(function (id) {
+        var state = stateList[id];
         addStateToWorkerDataTree(cellIndex, workerData, state);
       });
-    } else {
-      var currentCellData = cellData[cellIndex];
-      var typeList = Object.keys(currentCellData);
-
-      typeList.forEach(function (type) {
-        var stateList = currentCellData[type];
-        var ids = Object.keys(stateList);
-
-        ids.forEach(function (id) {
-          var state = stateList[id];
-
-          addStateToWorkerDataTree(cellIndex, workerData, state);
-        });
-      });
-    }
+    });
 
     // This after we've processed the data in our cell controller, we will send it back
     // to the appropriate workers (based on swid) which will then redistribute it to players.
     var workerIdList = Object.keys(workerData);
-
     workerIdList.forEach(function (swid) {
       scServer.exchange.publish('internal/cell-processing-outbound/' + swid, workerData[swid]);
     });
@@ -249,7 +252,6 @@ module.exports.run = function (worker) {
       if (!currentCellData[state.type]) {
         currentCellData[state.type] = {};
       }
-
       var stateCellIndex = channelGrid.getCellIndex(state);
       /*
         The reason why we don't always copy the state from the upstream worker
@@ -262,22 +264,19 @@ module.exports.run = function (worker) {
         to be interpreted by the cell controller.
         The 'data' property can carry any long-term custom data.
       */
-      if (!currentCellData[state.type][state.id]) {
+      if (!currentCellData[state.type][state.id] || stateCellIndex != cellIndex) {
         currentCellData[state.type][state.id] = state;
       }
       var cachedState = currentCellData[state.type][state.id];
-      if (stateCellIndex == cellIndex) {
-        cachedState.op = state.op;
-        cachedState.data = state.data;
-      }
+      cachedState.op = state.op;
+      cachedState.data = state.data;
       cachedState.processed = Date.now();
       cachedStateList.push(cachedState);
     });
 
     var input = {
       options: cellControllerOptions,
-      cellData: currentCellData,
-      states: cachedStateList
+      cellData: currentCellData
     };
 
     cellController.run(input, dispatchProcessedData.bind(null, cellIndex));
@@ -396,8 +395,6 @@ module.exports.run = function (worker) {
     In here we handle our incoming realtime connections and listen for events.
   */
   scServer.on('connection', function (socket) {
-    console.log('USER SWID:', serverWorkerId); // TODO
-
     socket.on('getWorldInfo', function (data, respond) {
       // The first argument to respond can optionally be an Error object.
       respond(null, {

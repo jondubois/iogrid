@@ -16,17 +16,6 @@ module.exports.run = function (input, done) {
   findPlayerOverlaps(players);
   applyPlayerOps(players);
 
-  /*
-    If we call done() without any arguments, it will dispatch the
-    entire tree for the cell back to upstream processes.
-    If we pass a list of states which were received in this current
-    iteration (e.g. input.states), it will only send back those states
-    so it's more efficient.
-    Note that if you add new states to your cellData or modify states
-    which are not in input.states, you need to remember to add them
-    to the list too or else they won't get processed.
-  */
-  // done(input.states); // TODO
   done();
 };
 
