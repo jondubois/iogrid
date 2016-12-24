@@ -47,6 +47,14 @@ ChannelGrid.prototype.getCellCoordinates = function (object) {
   }
 };
 
+ChannelGrid.prototype.getCellCenter = function (cellIndex) {
+  var gridCoords = this.convertCellIndexToCoordinates(cellIndex);
+  return {
+    x: gridCoords.c * this.cellWidth + Math.round(this.cellWidth / 2),
+    y: gridCoords.r * this.cellHeight + Math.round(this.cellHeight / 2)
+  };
+};
+
 ChannelGrid.prototype.getAllCellCoordinates = function (object) {
   var overlapDist = this.cellOverlapDistance;
 

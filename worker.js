@@ -12,10 +12,10 @@ var SAT = require('sat');
 var rbush = require('rbush');
 var cellController = require('./cell');
 
-var WORLD_WIDTH = 2000;
-var WORLD_HEIGHT = 2000;
-var WORLD_CELL_WIDTH = 1000;
-var WORLD_CELL_HEIGHT = 1000;
+var WORLD_WIDTH = 1000;
+var WORLD_HEIGHT = 1000;
+var WORLD_CELL_WIDTH = 500;
+var WORLD_CELL_HEIGHT = 500;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
 var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
@@ -29,10 +29,10 @@ var WORLD_CELL_OVERLAP_DISTANCE = 200;
 
 var PLAYER_UPDATE_INTERVAL = 20;
 var PLAYER_MOVE_SPEED = 7;
-var PLAYER_DIAMETER = 100;
+var PLAYER_DIAMETER = 150;
 var PLAYER_MASS = 5;
 
-var BOT_COUNT = 2;
+var BOT_COUNT = 0;
 var BOT_MOVE_SPEED = 4;
 var BOT_MASS = 10;
 var BOT_DIAMETER = 120;
@@ -186,6 +186,10 @@ module.exports.run = function (worker) {
     channelGrid.watchCellAtIndex('internal/cell-processing-inbound', cellIndex, gridCellDataHandler.bind(null, cellIndex));
   }
 
+  function getVectorLength(v) {
+    return Math.sqrt(v.x * v.x + v.y * v.y);
+  }
+
   function addStateToWorkerDataTree(cellIndex, workerData, state) {
     var id = state.id;
     var swid = state.swid;
@@ -203,17 +207,34 @@ module.exports.run = function (worker) {
     }
 
     var targetCellIndex = channelGrid.getCellIndex(state);
-    var affectedCellIndexes = channelGrid.getAllCellIndexes(state);
 
-    // After doing processing, if the state object is still in this cell, then
-    // we will send the state to the upstream worker.
-    if (targetCellIndex == cellIndex) {
+    var cellCenter = channelGrid.getCellCenter(cellIndex);
+    var oldPos = state.positionBeforeProcessing;
+
+    var hasMovedTowardsCell = true;
+    if (oldPos) {
+      delete state.positionBeforeProcessing;
+
+      var oldDistanceFromCellCenter = getVectorLength({
+        x: oldPos.x - cellCenter.x,
+        y: oldPos.y - cellCenter.y
+      });
+
+      var newDistanceFromCellCenter = getVectorLength({
+        x: state.x - cellCenter.x,
+        y: state.y - cellCenter.y
+      });
+
+      hasMovedTowardsCell = newDistanceFromCellCenter < oldDistanceFromCellCenter;
+    }
+
+    if (targetCellIndex == cellIndex || hasMovedTowardsCell) {
       workerData[swid][type][id] = state;
     }
 
     // If the state object is no longer in this cell or in the area immediately
     // surrounding this cell, we should delete it from our cellData map.
-    if (affectedCellIndexes.indexOf(cellIndex) == -1) {
+    if (targetCellIndex != cellIndex && !hasMovedTowardsCell) {
       delete cellData[cellIndex][type][id];
     }
   }
@@ -264,10 +285,14 @@ module.exports.run = function (worker) {
         to be interpreted by the cell controller.
         The 'data' property can carry any long-term custom data.
       */
-      if (!currentCellData[state.type][state.id] || stateCellIndex != cellIndex) {
+      if (!currentCellData[state.type][state.id]) {
         currentCellData[state.type][state.id] = state;
       }
       var cachedState = currentCellData[state.type][state.id];
+      cachedState.positionBeforeProcessing = {
+        x: cachedState.x,
+        y: cachedState.y
+      };
       cachedState.op = state.op;
       cachedState.data = state.data;
       cachedState.processed = Date.now();
