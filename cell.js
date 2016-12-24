@@ -1,14 +1,26 @@
 var rbush = require('rbush');
 var SAT = require('sat');
+var CoinManager = require('./coin-manager').CoinManager;
 
 var STALE_TIMEOUT = 1000;
 
 var options;
+var coinManager;
 
-module.exports.run = function (input, done) {
+module.exports.init = function(opts) {
+  options = opts;
+  // var coinManager = new CoinManager({
+  //   serverWorkerId: serverWorkerId,
+  //   worldWidth: WORLD_WIDTH,
+  //   worldHeight: WORLD_HEIGHT,
+  //   maxCoinCount: COIN_MAX_COUNT,
+  //   playerNoDropRadius: COIN_PLAYER_NO_DROP_RADIUS,
+  //   players: game.players
+  // });
+};
+
+module.exports.run = function (cellData, done) {
   var self = this;
-  options = input.options;
-  var cellData = input.cellData;
 
   var players = cellData.player || {};
   var processedSubtree = {
@@ -100,7 +112,7 @@ function removeStalePlayers(players) {
   var playerIds = Object.keys(players);
   playerIds.forEach(function (playerId) {
     var player = players[playerId];
-    if (player.op && player.op.delete || Date.now() - player.processed > STALE_TIMEOUT) {
+    if (player.delete || Date.now() - player.processed > STALE_TIMEOUT) {
       delete players[playerId];
     }
   });

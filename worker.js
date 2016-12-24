@@ -4,6 +4,7 @@ var serveStatic = require('serve-static');
 var path = require('path');
 var morgan = require('morgan');
 var healthChecker = require('sc-framework-health-check');
+var StateManager = require('./state-manager').StateManager;
 // var CoinManager = require('./coin-manager').CoinManager;
 var BotManager = require('./bot-manager').BotManager;
 var uuid = require('uuid');
@@ -14,13 +15,15 @@ var cellController = require('./cell');
 
 var WORLD_WIDTH = 4000;
 var WORLD_HEIGHT = 4000;
+
 // Dividing the world into vertical or horizontal strips (instead of cells)
 // is more efficient.
-var WORLD_CELL_WIDTH = 1000;
+var WORLD_CELL_WIDTH = 500;
 var WORLD_CELL_HEIGHT = 4000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
 var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
+
 /*
   This allows players from two different cells on the grid to
   interact with one another.
@@ -45,7 +48,7 @@ var COIN_MAX_COUNT = 10;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
 
 var game = {
-  players: {}
+  states: {}
 };
 
 function getRandomPosition(spriteWidth, spriteHeight) {
@@ -112,6 +115,10 @@ module.exports.run = function (worker) {
   //   players: game.players
   // });
 
+  var stateManager = new StateManager({
+    states: game.states
+  });
+
   var botManager = new BotManager({
     serverWorkerId: serverWorkerId,
     worldWidth: WORLD_WIDTH,
@@ -119,7 +126,7 @@ module.exports.run = function (worker) {
     botDiameter: BOT_DIAMETER,
     botMoveSpeed: BOT_MOVE_SPEED,
     botMass: BOT_MASS,
-    players: game.players
+    states: game.states
   });
 
   // This allows us to break up our channels into a grid of cells which we can
@@ -137,12 +144,13 @@ module.exports.run = function (worker) {
   .watch(function (data) {
     var playerIds = Object.keys(data.player);
     playerIds.forEach(function (id) {
-      var targetPlayerState = game.players[id];
+      var targetPlayerState = game.states[id];
       if (targetPlayerState) {
         var sourcePlayerState = data.player[id];
         // The cell controller can overwrite every property except for the op
         // and data properties.
         var freshOp = targetPlayerState.op;
+        var freshDelete = targetPlayerState.delete;
         var freshData = targetPlayerState.data;
 
         for (var i in targetPlayerState) {
@@ -159,6 +167,11 @@ module.exports.run = function (worker) {
           targetPlayerState.op = freshOp;
         } else {
           delete targetPlayerState.op;
+        }
+        if (freshDelete) {
+          targetPlayerState.delete = freshDelete;
+        } else {
+          delete targetPlayerState.delete;
         }
         if (freshData) {
           targetPlayerState.data = freshData;
@@ -180,6 +193,7 @@ module.exports.run = function (worker) {
     worldUpdateInterval: WORLD_UPDATE_INTERVAL,
     playerMoveSpeed: PLAYER_MOVE_SPEED
   };
+  cellController.init(cellControllerOptions);
   var cellData = {};
 
   for (var h = 0; h < cellsPerWorker; h++) {
@@ -189,7 +203,7 @@ module.exports.run = function (worker) {
     channelGrid.watchCellAtIndex('internal/cell-processing-inbound', cellIndex, gridCellDataHandler.bind(null, cellIndex));
   }
 
-  function addStateToWorkerDataTree(cellIndex, workerData, state) {
+  function prepareWorkerDataTree(cellIndex, workerData, state) {
     var id = state.id;
     var swid = state.swid;
     var type = state.type;
@@ -201,28 +215,31 @@ module.exports.run = function (worker) {
       delete state.isFresh;
     }
 
-    if (!workerData[swid]) {
-      workerData[swid] = {};
-    }
-    if (!workerData[swid][type]) {
-      workerData[swid][type] = {};
-    }
+    if (swid) {
+      if (!workerData[swid]) {
+        workerData[swid] = {};
+      }
+      if (!workerData[swid][type]) {
+        workerData[swid][type] = {};
+      }
 
-    var targetCellIndex = channelGrid.getCellIndex(state);
+      var targetCellIndex = channelGrid.getCellIndex(state);
 
-    // This data will be sent out to the upstream worker.
-    if (targetCellIndex == cellIndex || state.clid == cellIndex) {
-      workerData[swid][type][id] = state;
-    }
+      // This data will be sent out to the upstream worker.
+      if (targetCellIndex == cellIndex || state.clid == cellIndex) {
+        workerData[swid][type][id] = state;
+      }
 
-    // If the state object is no longer in this cell, we should delete
-    // it from our cellData map.
-    if (targetCellIndex != cellIndex || state.clid != cellIndex) {
-      delete cellData[cellIndex][type][id];
+      // If the state object is no longer in this cell, we should delete
+      // it from our cellData map.
+      if (targetCellIndex != cellIndex || state.clid != cellIndex) {
+      // if (targetCellIndex != cellIndex) {
+        delete cellData[cellIndex][type][id];
+      }
+      // We need to set this in case there is a disagreement over which cell should
+      // handle a state.
+      state.clid = targetCellIndex;
     }
-    // We need to set this in case there is a disagreement over which cell should
-    // handle a state.
-    state.clid = targetCellIndex;
   }
 
   function dispatchProcessedData(cellIndex, processedSubTree) {
@@ -236,9 +253,11 @@ module.exports.run = function (worker) {
 
       ids.forEach(function (id) {
         var state = stateList[id];
-        addStateToWorkerDataTree(cellIndex, workerData, state);
+        prepareWorkerDataTree(cellIndex, workerData, state);
       });
     });
+    // TODO: DO NOT SEND IF SUBTREE IS EMPTY
+    // console.log(55, processedSubTree)
 
     // This after we've processed the data in our cell controller, we will send it back
     // to the appropriate workers (based on swid) which will then redistribute it to players.
@@ -272,89 +291,72 @@ module.exports.run = function (worker) {
         currentCellData[state.type][state.id] = state;
       }
       var cachedState = currentCellData[state.type][state.id];
-      cachedState.op = state.op;
-      cachedState.data = state.data;
+      if (state.op) {
+        cachedState.op = state.op;
+      }
+      if (state.delete) {
+        cachedState.delete = state.delete;
+      }
+      if (state.data) {
+        cachedState.data = state.data;
+      }
       cachedState.isFresh = true;
       cachedState.processed = Date.now();
       cachedStateList.push(cachedState);
     });
 
-    var input = {
-      options: cellControllerOptions,
-      cellData: currentCellData
-    };
-
-    cellController.run(input, dispatchProcessedData.bind(null, cellIndex));
+    cellController.run(currentCellData, dispatchProcessedData.bind(null, cellIndex));
   }
 
-  // Check if the user hit a coin.
-  // Because the user and the coin may potentially be hosted on different
-  // workers/servers, we add an additional step by publishing to a secondary internal channel.
-  // The first step involves checking that the user exists on this worker. The second step is used to
-  // verify that the coin exists (potentially on a different worker) and cross checks that the user did in
-  // fact hit the coin. This two-step check is necessary because we cannot trust position data from the client.
-  // scServer.exchange.subscribe('external/coin-hit-check/' + serverWorkerId)
-  // .watch(function (data) {
-  //   var curUser = game.players[data.userId];
-  //   if (curUser && data.coins && data.coins.length) {
-  //     data.coins.forEach(function (coinData) {
-  //       scServer.exchange.publish('internal/coin-hit-check/' + coinData.swid, {
-  //         coinId: coinData.id,
-  //         user: curUser,
-  //         swid: serverWorkerId
-  //       });
-  //     });
-  //   }
-  // });
+  setInterval(function () {
+    var statesList = [];
+    var cellDataIndexes = Object.keys(cellData);
+    cellDataIndexes.forEach(function (cellIndex) {
+      var currentCellData = cellData[cellIndex];
+      var typeList = Object.keys(currentCellData);
 
-  // scServer.exchange.subscribe('internal/player-increase-score/' + serverWorkerId)
-  // .watch(function (data) {
-  //   var curUser = game.players[data.userId];
-  //   if (curUser) {
-  //     curUser.data.score += data.value;
-  //   }
-  // });
-
-  // var removedCoins = [];
-
-  // scServer.exchange.subscribe('internal/coin-hit-check/' + serverWorkerId)
-  // .watch(function (data) {
-  //   var coinId = data.coinId;
-  //   var userState = data.user;
-  //   var swid = data.swid;
-  //   if (coinManager.doesUserTouchCoin(coinId, userState)) {
-  //     var coin = coinManager.coins[coinId];
-  //     removedCoins.push(coin);
-  //     coinManager.removeCoin(coinId);
-  //     scServer.exchange.publish('internal/player-increase-score/' + swid, {
-  //       userId: userState.id,
-  //       value: coin.v
-  //     });
-  //   }
-  // });
-
-  function flushPlayerData() {
-    var playerStates = [];
-    for (var i in game.players) {
-      if (game.players.hasOwnProperty(i)) {
-        playerStates.push(game.players[i]);
-      }
-    }
+      typeList.forEach(function (type) {
+        var ids = Object.keys(currentCellData[type]);
+        ids.forEach(function (id) {
+          var state = currentCellData[type][id];
+          var targetCellIndex = channelGrid.getCellIndex(state);
+          if (targetCellIndex == cellIndex || state.clid == cellIndex) {
+            statesList.push(state);
+          }
+        });
+      });
+    });
 
     // External channel which clients can subscribe to.
-    channelGrid.publish('cell-data', playerStates);
+    // It will publish to multiple channels based on each state's
+    // (x, y) coordinates.
+    channelGrid.publish('cell-data', statesList);
+  }, WORLD_UPDATE_INTERVAL);
+
+
+  // This is the main input loop which feeds states into various cells
+  // based on their (x, y) coordinates.
+  function processInputStates() {
+    var stateList = [];
+    var stateIds = Object.keys(game.states);
+
+    stateIds.forEach(function (id) {
+      var state = game.states[id];
+      stateList.push(state);
+    });
 
     // Publish to internal channel for processing (e.g. Collision
     // detection and resolution, scoring, etc...)
-    // This data will be processed by cell controllers.
-    channelGrid.publish('internal/cell-processing-inbound', playerStates);
+    // These states will be processed by various cell controllers depending
+    // on each state's (x, y) coordinates within the world grid.
+    channelGrid.publish('internal/cell-processing-inbound', stateList);
 
-    playerStates.forEach(function (player) {
-      if (player.op) {
-        if (player.op.delete) {
-          delete game.players[player.id];
-        }
-        delete player.op;
+    stateList.forEach(function (state) {
+      if (state.op) {
+        delete state.op;
+      }
+      if (state.delete) {
+        delete game.states[state.id];
       }
     });
   }
@@ -376,14 +378,12 @@ module.exports.run = function (worker) {
   //   }
   // }
 
-  function updatePlayers() {
-    botManager.moveBotsRandomly();
-    flushPlayerData();
+  function updateWorldState() {
+    // botManager.moveBotsRandomly();
+    processInputStates();
   }
 
-  setInterval(updatePlayers, WORLD_UPDATE_INTERVAL);
-  // setInterval(flushCoinData, COIN_UPDATE_INTERVAL);
-  // setInterval(flushCoinsTakenData, COIN_TAKEN_INTERVAL);
+  setInterval(updateWorldState, WORLD_UPDATE_INTERVAL);
 
   // var dropCoin = function () {
   //   // Drop a coin with value 1 and a radius of 12
@@ -394,7 +394,7 @@ module.exports.run = function (worker) {
 
   var botsPerWorker = Math.round(BOT_COUNT / worker.options.workers);
   for (var b = 0; b < botsPerWorker; b++) {
-    botManager.addBot();
+    // botManager.addBot();
   }
 
   /*
@@ -418,7 +418,7 @@ module.exports.run = function (worker) {
 
     socket.on('join', function (playerOptions, respond) {
       var startingPos = getRandomPosition(PLAYER_DIAMETER, PLAYER_DIAMETER);
-      socket.player = {
+      var player = {
         id: uuid.v4(),
         type: 'player',
         swid: serverWorkerId,
@@ -436,25 +436,20 @@ module.exports.run = function (worker) {
         processed: Date.now()
       };
 
-      game.players[socket.player.id] = socket.player;
+      socket.player = stateManager.create(player);
 
-      respond(null, socket.player);
+      respond(null, player);
     });
-
-    function setPlayerAction(player, op) {
-      player.op = op;
-    }
 
     socket.on('action', function (playerOp) {
       if (socket.player) {
-        setPlayerAction(socket.player, playerOp);
+        stateManager.update(socket.player, playerOp);
       }
     });
 
     socket.on('disconnect', function () {
       if (socket.player) {
-        var userId = socket.player.id;
-        socket.player.op = {delete: 1};
+        stateManager.delete(socket.player);
       }
     });
   });
