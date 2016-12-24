@@ -4,6 +4,7 @@
     <title>Hello Phaser!</title>
     <link rel="icon" type="image/png" href="/favicon.ico">
     <script type="text/javascript" src="/socketcluster.js"></script>
+    <script src="/sc-codec-min-bin.js"></script>
     <script src="/phaser.min.js"></script>
     <script src="/rbush.min.js"></script>
     <script src="/SAT.min.js"></script>
@@ -24,7 +25,9 @@
   <body>
     <script type="text/javascript">
 
-      var socket = socketCluster.connect();
+      var socket = socketCluster.connect({
+        codecEngine: scCodecMinBin
+      });
 
       window.onload = function () {
 

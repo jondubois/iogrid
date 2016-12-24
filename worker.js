@@ -11,6 +11,7 @@ var uuid = require('uuid');
 var ChannelGrid = require('./public/channel-grid').ChannelGrid;
 var SAT = require('sat');
 var rbush = require('rbush');
+var scCodecMinBin = require('sc-codec-min-bin');
 var cellController = require('./cell');
 
 var WORLD_WIDTH = 4000;
@@ -31,7 +32,7 @@ var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
   are in different cells. A smaller distance is more efficient.
 */
 var WORLD_CELL_OVERLAP_DISTANCE = 110;
-var WORLD_UPDATE_INTERVAL = 40;
+var WORLD_UPDATE_INTERVAL = 40
 
 var PLAYER_MOVE_SPEED = 10;
 var PLAYER_DIAMETER = 100;
@@ -64,6 +65,10 @@ function getRandomPosition(spriteWidth, spriteHeight) {
 
 module.exports.run = function (worker) {
   console.log('   >> Worker PID:', process.pid);
+
+  // We use a codec for SC to compress messages between clients and the server
+  // to a lightweight binary format to reduce bandwidth consumption.
+  worker.scServer.setCodecEngine(scCodecMinBin);
 
   var environment = worker.options.environment;
   var serverWorkerId = worker.options.instanceId + ':' + worker.id;
@@ -233,7 +238,6 @@ module.exports.run = function (worker) {
       // If the state object is no longer in this cell, we should delete
       // it from our cellData map.
       if (targetCellIndex != cellIndex || state.clid != cellIndex) {
-      // if (targetCellIndex != cellIndex) {
         delete cellData[cellIndex][type][id];
       }
       // We need to set this in case there is a disagreement over which cell should
@@ -379,7 +383,7 @@ module.exports.run = function (worker) {
   // }
 
   function updateWorldState() {
-    // botManager.moveBotsRandomly();
+    botManager.moveBotsRandomly();
     processInputStates();
   }
 
@@ -394,7 +398,7 @@ module.exports.run = function (worker) {
 
   var botsPerWorker = Math.round(BOT_COUNT / worker.options.workers);
   for (var b = 0; b < botsPerWorker; b++) {
-    // botManager.addBot();
+    botManager.addBot();
   }
 
   /*

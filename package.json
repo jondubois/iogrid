@@ -10,6 +10,7 @@
     "rbush": "2.0.1",
     "sat": "0.6.0",
     "sc-cluster-broker-client": "1.x.x",
+    "sc-codec-min-bin": "2.0.0",
     "sc-framework-health-check": "1.x.x",
     "sc-hot-reboot": "1.x.x",
     "serve-static": "1.8.0",
