@@ -9,7 +9,7 @@ var coinManager;
 
 module.exports.init = function(opts) {
   options = opts;
-  // var coinManager = new CoinManager({
+  // coinManager = new CoinManager({
   //   serverWorkerId: serverWorkerId,
   //   worldWidth: WORLD_WIDTH,
   //   worldHeight: WORLD_HEIGHT,

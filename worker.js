@@ -221,17 +221,16 @@ module.exports.run = function (worker) {
     }
 
     if (swid) {
-      if (!workerData[swid]) {
-        workerData[swid] = {};
-      }
-      if (!workerData[swid][type]) {
-        workerData[swid][type] = {};
-      }
-
       var targetCellIndex = channelGrid.getCellIndex(state);
 
       // This data will be sent out to the upstream worker.
       if (targetCellIndex == cellIndex || state.clid == cellIndex) {
+        if (!workerData[swid]) {
+          workerData[swid] = {};
+        }
+        if (!workerData[swid][type]) {
+          workerData[swid][type] = {};
+        }
         workerData[swid][type][id] = state;
       }
 
@@ -260,8 +259,6 @@ module.exports.run = function (worker) {
         prepareWorkerDataTree(cellIndex, workerData, state);
       });
     });
-    // TODO: DO NOT SEND IF SUBTREE IS EMPTY
-    // console.log(55, processedSubTree)
 
     // This after we've processed the data in our cell controller, we will send it back
     // to the appropriate workers (based on swid) which will then redistribute it to players.

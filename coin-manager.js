@@ -8,7 +8,6 @@ var COIN_DEFAULT_VALUE = 1;
 
 
 var CoinManager = function (options) {
-  this.serverWorkerId = options.serverWorkerId;
   this.playerNoDropRadius = options.playerNoDropRadius;
   this.maxCoinCount = options.maxCoinCount;
   this.worldWidth = options.worldWidth;
@@ -60,7 +59,6 @@ CoinManager.prototype.addCoin = function (value, radius) {
     var coin = {
       id: coinId,
       type: 'coin',
-      swid: this.serverWorkerId,
       v: value || COIN_DEFAULT_VALUE,
       r: radius,
       x: validPosition.x,
