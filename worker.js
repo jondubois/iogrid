@@ -12,15 +12,15 @@ var ChannelGrid = require('./public/channel-grid').ChannelGrid;
 var SAT = require('sat');
 var rbush = require('rbush');
 var scCodecMinBin = require('sc-codec-min-bin');
-var cellController = require('./cell');
+var CellController = require('./cell');
 
-var WORLD_WIDTH = 4000;
-var WORLD_HEIGHT = 4000;
+var WORLD_WIDTH = 2000;
+var WORLD_HEIGHT = 2000;
 
 // Dividing the world into vertical or horizontal strips (instead of cells)
 // is more efficient.
 var WORLD_CELL_WIDTH = 500;
-var WORLD_CELL_HEIGHT = 4000;
+var WORLD_CELL_HEIGHT = 2000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
 var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
@@ -38,13 +38,16 @@ var PLAYER_MOVE_SPEED = 10;
 var PLAYER_DIAMETER = 100;
 var PLAYER_MASS = 5;
 
+// Note that the number of bots needs to be either 0 or a multiple of the number of
+// worker processes or else it will get rounded up/down.
 var BOT_COUNT = 4;
 var BOT_MOVE_SPEED = 5;
 var BOT_MASS = 10;
 var BOT_DIAMETER = 100;
 
 var COIN_UPDATE_INTERVAL = 1000;
-var COIN_DROP_INTERVAL = 1000;
+var COIN_DROP_INTERVAL = 100;
+var COIN_RADIUS = 12;
 var COIN_MAX_COUNT = 10;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
 
@@ -192,19 +195,26 @@ module.exports.run = function (worker) {
   }
 
   var cellsPerWorker = WORLD_CELLS / worker.options.workers;
-  var cellControllerOptions = {
-    worldWidth: WORLD_WIDTH,
-    worldHeight: WORLD_HEIGHT,
-    worldUpdateInterval: WORLD_UPDATE_INTERVAL,
-    playerMoveSpeed: PLAYER_MOVE_SPEED
-  };
-  cellController.init(cellControllerOptions);
   var cellData = {};
+  var cellControllers = {};
 
   for (var h = 0; h < cellsPerWorker; h++) {
     var cellIndex = worker.id + h * worker.options.workers;
     // Track cell indexes handled by our current worker.
     cellData[cellIndex] = {};
+    cellControllers[cellIndex] = new CellController({
+      cellIndex: cellIndex,
+      cellData: cellData[cellIndex],
+      cellBounds: channelGrid.getCellBounds(cellIndex),
+      coinPlayerNoDropRadius: COIN_PLAYER_NO_DROP_RADIUS,
+      coinMaxCount: Math.round(COIN_MAX_COUNT / WORLD_CELLS),
+      coinDropInterval: COIN_DROP_INTERVAL,
+      coinRadius: COIN_RADIUS,
+      worldWidth: WORLD_WIDTH,
+      worldHeight: WORLD_HEIGHT,
+      worldUpdateInterval: WORLD_UPDATE_INTERVAL,
+      playerMoveSpeed: PLAYER_MOVE_SPEED
+    });
     channelGrid.watchCellAtIndex('internal/cell-processing-inbound', cellIndex, gridCellDataHandler.bind(null, cellIndex));
   }
 
@@ -245,19 +255,39 @@ module.exports.run = function (worker) {
     }
   }
 
-  function dispatchProcessedData(cellIndex, processedSubTree) {
-    var workerData = {};
-    var currentCellData = processedSubTree || cellData[cellIndex];
-    var typeList = Object.keys(currentCellData);
+  function forEachStateInDataTree(dataTree, callback) {
+    var typeList = Object.keys(dataTree);
 
     typeList.forEach(function (type) {
-      var stateList = currentCellData[type];
+      var stateList = dataTree[type];
       var ids = Object.keys(stateList);
 
       ids.forEach(function (id) {
-        var state = stateList[id];
-        prepareWorkerDataTree(cellIndex, workerData, state);
+        callback(stateList[id]);
       });
+    });
+  }
+
+  function dispatchProcessedData(cellIndex, processedSubtree) {
+    var workerData = {};
+    var currentCellData = cellData[cellIndex];
+
+    if (processedSubtree) {
+      forEachStateInDataTree(processedSubtree, function (state) {
+        var type = state.type;
+        var id = state.id;
+
+        if (!currentCellData[type]) {
+          currentCellData[type] = {};
+        }
+        if (!currentCellData[type][id]) {
+          currentCellData[type][id] = state;
+        }
+      });
+    }
+
+    forEachStateInDataTree(currentCellData, function (state) {
+      prepareWorkerDataTree(cellIndex, workerData, state);
     });
 
     // This after we've processed the data in our cell controller, we will send it back
@@ -306,7 +336,7 @@ module.exports.run = function (worker) {
       cachedStateList.push(cachedState);
     });
 
-    cellController.run(currentCellData, dispatchProcessedData.bind(null, cellIndex));
+    cellControllers[cellIndex].run(currentCellData, dispatchProcessedData.bind(null, cellIndex));
   }
 
   setInterval(function () {

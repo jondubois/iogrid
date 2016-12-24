@@ -51,11 +51,15 @@ ChannelGrid.prototype.getCellCoordinates = function (object) {
   }
 };
 
-ChannelGrid.prototype.getCellCenter = function (cellIndex) {
+ChannelGrid.prototype.getCellBounds = function (cellIndex) {
   var gridCoords = this.convertCellIndexToCoordinates(cellIndex);
+  var x = gridCoords.c * this.cellWidth;
+  var y = gridCoords.r * this.cellHeight;
   return {
-    x: gridCoords.c * this.cellWidth + Math.round(this.cellWidth / 2),
-    y: gridCoords.r * this.cellHeight + Math.round(this.cellHeight / 2)
+    minX: x,
+    minY: y,
+    maxX: x + this.cellWidth,
+    maxY: y + this.cellHeight
   };
 };
 

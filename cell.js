@@ -1,40 +1,92 @@
+/*
+  Note that the main run() loop will be executed every time a new set of state data needs to be processed
+  by our cell controller.
+  Because this system is distributed, you cannot know the frequency and ordering of data updates.
+  The run() function will be executed based on system demand.
+  Behind the scenes, the engine just keeps on building up a cellData tree of all different
+  state objects that are present within our current grid cell.
+  The tree is a simple JSON object and needs to be in the format:
+    {
+      player: {
+        // ...
+      },
+      someType: {
+        someId: {
+          // All properties listed here are required.
+          // You can add additional ones.
+          id: theValueOfSomeId,
+          type: theValueOfSomeType,
+          x: someXCoordinateWithinOurCurrentCell,
+          y: someYCoordinateWithinOurCurrentCell,
+        },
+        anotherId: {
+          // ...
+        }
+      }
+    }
+  You can add new type structures, new properties and new items to the cellData
+  as you like. So long as you follow the structure above, the items should show
+  up on the front end in the relevant cell in our world (see the handleCellData function in index.html).
+  See how CoinManager was implemented for details of how to add items within the cell.
+*/
+
 var rbush = require('rbush');
 var SAT = require('sat');
 var CoinManager = require('./coin-manager').CoinManager;
 
 var STALE_TIMEOUT = 1000;
 
-var options;
-var coinManager;
+// This controller will be instantiated once for each
+// cell in our world grid.
 
-module.exports.init = function(opts) {
-  options = opts;
-  // coinManager = new CoinManager({
-  //   serverWorkerId: serverWorkerId,
-  //   worldWidth: WORLD_WIDTH,
-  //   worldHeight: WORLD_HEIGHT,
-  //   maxCoinCount: COIN_MAX_COUNT,
-  //   playerNoDropRadius: COIN_PLAYER_NO_DROP_RADIUS,
-  //   players: game.players
-  // });
+var CellController = function (options) {
+  this.options = options;
+  this.coinManager = new CoinManager({
+    cellData: options.cellData,
+    cellBounds: options.cellBounds,
+    playerNoDropRadius: options.coinPlayerNoDropRadius,
+    coinMaxCount: options.coinMaxCount,
+    coinDropInterval: options.coinDropInterval,
+    coinRadius: options.coinRadius
+  });
 };
 
-module.exports.run = function (cellData, done) {
-  var self = this;
-
+/*
+  The main run loop for our cell controller.
+*/
+CellController.prototype.run = function (cellData, done) {
   var players = cellData.player || {};
   var processedSubtree = {
-    player: {}
+    player: {},
+    coin: {}
   };
 
-  removeStalePlayers(players, processedSubtree);
-  findPlayerOverlaps(players, processedSubtree);
-  applyPlayerOps(players, processedSubtree);
+  this.dropCoins(processedSubtree);
+  this.removeStalePlayers(players, processedSubtree);
+  this.findPlayerOverlaps(players, processedSubtree);
+  this.applyPlayerOps(players, processedSubtree);
 
   done(processedSubtree);
 };
 
-function applyPlayerOps(players, processedSubtree) {
+var lastCoinDrop = 0;
+
+CellController.prototype.dropCoins = function (processedSubtree) {
+  var now = Date.now();
+
+  if (now - lastCoinDrop >= this.coinManager.coinDropInterval &&
+    this.coinManager.coinCount < this.coinManager.coinMaxCount) {
+
+    lastCoinDrop = now;
+    // Add a coin with a score value of 1 and radius of 12 pixels.
+    var coin = this.coinManager.addCoin(1, 12);
+    processedSubtree.coin[coin.id] = coin;
+  }
+}
+
+CellController.prototype.applyPlayerOps = function (players, processedSubtree) {
+  var self = this;
+
   var playerIds = Object.keys(players);
   playerIds.forEach(function (playerId) {
     var player = players[playerId];
@@ -49,7 +101,7 @@ function applyPlayerOps(players, processedSubtree) {
       if (player.subtype == 'bot') {
         moveSpeed = player.speed;
       } else {
-        moveSpeed = options.playerMoveSpeed;
+        moveSpeed = self.options.playerMoveSpeed;
       }
       if (player.data) {
         if (player.data.score) {
@@ -89,26 +141,26 @@ function applyPlayerOps(players, processedSubtree) {
 
       if (leftX < 0) {
         player.x = halfWidth;
-      } else if (rightX > options.worldWidth) {
-        player.x = options.worldWidth - halfWidth;
+      } else if (rightX > self.options.worldWidth) {
+        player.x = self.options.worldWidth - halfWidth;
       }
       if (topY < 0) {
         player.y = halfHeight;
-      } else if (bottomY > options.worldHeight) {
-        player.y = options.worldHeight - halfHeight;
+      } else if (bottomY > self.options.worldHeight) {
+        player.y = self.options.worldHeight - halfHeight;
       }
     }
 
     if (player.overlaps) {
       player.overlaps.forEach(function (otherPlayer) {
-        resolveCollision(player, otherPlayer, processedSubtree);
+        self.resolveCollision(player, otherPlayer, processedSubtree);
       });
       delete player.overlaps;
     }
   });
 }
 
-function removeStalePlayers(players) {
+CellController.prototype.removeStalePlayers = function (players) {
   var playerIds = Object.keys(players);
   playerIds.forEach(function (playerId) {
     var player = players[playerId];
@@ -118,14 +170,16 @@ function removeStalePlayers(players) {
   });
 }
 
-function findPlayerOverlaps(players) {
+CellController.prototype.findPlayerOverlaps = function (players) {
+  var self = this;
+
   var playerIds = Object.keys(players);
   var playerTree = new rbush();
   var hitAreaList = [];
 
   playerIds.forEach(function (playerId) {
     var player = players[playerId];
-    player.hitArea = generateHitArea(player);
+    player.hitArea = self.generateHitArea(player);
     hitAreaList.push(player.hitArea);
   });
 
@@ -150,7 +204,7 @@ function findPlayerOverlaps(players) {
   });
 }
 
-function generateHitArea(player) {
+CellController.prototype.generateHitArea = function (player) {
   var playerRadius = Math.round(player.width / 2);
   return {
     player: player,
@@ -161,7 +215,7 @@ function generateHitArea(player) {
   };
 }
 
-function resolveCollision(player, otherPlayer, processedSubtree) {
+CellController.prototype.resolveCollision = function (player, otherPlayer, processedSubtree) {
   var currentUser = new SAT.Circle(new SAT.Vector(player.x, player.y), Math.round(player.width / 2));
   var otherUser = new SAT.Circle(new SAT.Vector(otherPlayer.x, otherPlayer.y), Math.round(otherPlayer.width / 2));
   var response = new SAT.Response();
@@ -183,3 +237,5 @@ function resolveCollision(player, otherPlayer, processedSubtree) {
     processedSubtree.player[otherPlayer.id] = otherPlayer;
   }
 }
+
+module.exports = CellController;

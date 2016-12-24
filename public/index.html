@@ -38,8 +38,6 @@
         var game, playerId, player;
         users = {};
         coins = {};
-        // For collision detection
-        // var coinTree = rbush();
         var channelGrid;
 
         var WORLD_WIDTH;
@@ -307,7 +305,6 @@
         function removeCoin(coinData) {
           var coinToRemove = coins[coinData.id];
           if (coinToRemove) {
-            coinTree.remove(coinToRemove.hitArea);
             coinToRemove.sprite.destroy();
             delete coins[coinToRemove.id];
           }
@@ -333,8 +330,6 @@
               id: coinData.id
             };
             coin.processed = Date.now();
-
-            coinTree.insert(coin.hitArea);
           }
         }
 
