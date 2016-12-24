@@ -12,10 +12,12 @@ var SAT = require('sat');
 var rbush = require('rbush');
 var cellController = require('./cell');
 
-var WORLD_WIDTH = 2000;
-var WORLD_HEIGHT = 2000;
-var WORLD_CELL_WIDTH = 500;
-var WORLD_CELL_HEIGHT = 500;
+var WORLD_WIDTH = 4000;
+var WORLD_HEIGHT = 4000;
+// Dividing the world into vertical or horizontal strips (instead of cells)
+// is more efficient.
+var WORLD_CELL_WIDTH = 1000;
+var WORLD_CELL_HEIGHT = 4000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
 var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
@@ -25,9 +27,9 @@ var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
   It represents the maximum distance that they can be from one another if they
   are in different cells. A smaller distance is more efficient.
 */
-var WORLD_CELL_OVERLAP_DISTANCE = 130;
+var WORLD_CELL_OVERLAP_DISTANCE = 110;
+var WORLD_UPDATE_INTERVAL = 40;
 
-var PLAYER_UPDATE_INTERVAL = 40;
 var PLAYER_MOVE_SPEED = 10;
 var PLAYER_DIAMETER = 100;
 var PLAYER_MASS = 5;
@@ -89,6 +91,7 @@ module.exports.run = function (worker) {
       next();
     }
   });
+
   scServer.addMiddleware(scServer.MIDDLEWARE_PUBLISH_IN, function (req, next) {
     // Only allow clients to publish to channels whose names start with 'external/'
     if (req.channel.indexOf('external/') == 0) {
@@ -174,6 +177,7 @@ module.exports.run = function (worker) {
   var cellControllerOptions = {
     worldWidth: WORLD_WIDTH,
     worldHeight: WORLD_HEIGHT,
+    worldUpdateInterval: WORLD_UPDATE_INTERVAL,
     playerMoveSpeed: PLAYER_MOVE_SPEED
   };
   var cellData = {};
@@ -192,6 +196,9 @@ module.exports.run = function (worker) {
 
     if (state.op) {
       delete state.op;
+    }
+    if (state.isFresh) {
+      delete state.isFresh;
     }
 
     if (!workerData[swid]) {
@@ -218,9 +225,9 @@ module.exports.run = function (worker) {
     state.clid = targetCellIndex;
   }
 
-  function dispatchProcessedData(cellIndex) {
+  function dispatchProcessedData(cellIndex, processedSubTree) {
     var workerData = {};
-    var currentCellData = cellData[cellIndex];
+    var currentCellData = processedSubTree || cellData[cellIndex];
     var typeList = Object.keys(currentCellData);
 
     typeList.forEach(function (type) {
@@ -240,8 +247,6 @@ module.exports.run = function (worker) {
       scServer.exchange.publish('internal/cell-processing-outbound/' + swid, workerData[swid]);
     });
   };
-
-  var lastProcessing = Date.now();
 
   // Here we handle and prepare data for a single cell within our game grid to be
   // processed by our cell controller.
@@ -269,6 +274,7 @@ module.exports.run = function (worker) {
       var cachedState = currentCellData[state.type][state.id];
       cachedState.op = state.op;
       cachedState.data = state.data;
+      cachedState.isFresh = true;
       cachedState.processed = Date.now();
       cachedStateList.push(cachedState);
     });
@@ -375,7 +381,7 @@ module.exports.run = function (worker) {
     flushPlayerData();
   }
 
-  setInterval(updatePlayers, PLAYER_UPDATE_INTERVAL);
+  setInterval(updatePlayers, WORLD_UPDATE_INTERVAL);
   // setInterval(flushCoinData, COIN_UPDATE_INTERVAL);
   // setInterval(flushCoinsTakenData, COIN_TAKEN_INTERVAL);
 

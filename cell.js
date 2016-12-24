@@ -11,74 +11,85 @@ module.exports.run = function (input, done) {
   var cellData = input.cellData;
 
   var players = cellData.player || {};
+  var processedSubtree = {
+    player: {}
+  };
 
-  removeStalePlayers(players);
-  findPlayerOverlaps(players);
-  applyPlayerOps(players);
+  removeStalePlayers(players, processedSubtree);
+  findPlayerOverlaps(players, processedSubtree);
+  applyPlayerOps(players, processedSubtree);
 
-  done();
+  done(processedSubtree);
 };
 
-function applyPlayerOps(players) {
+function applyPlayerOps(players, processedSubtree) {
   var playerIds = Object.keys(players);
   playerIds.forEach(function (playerId) {
     var player = players[playerId];
 
-    var playerOp = player.op;
-    var moveSpeed;
-    if (player.subtype == 'bot') {
-      moveSpeed = player.speed;
-    } else {
-      moveSpeed = options.playerMoveSpeed;
-    }
-    if (player.data) {
-      if (player.data.score) {
-        player.score = player.data.score;
+    // The isFresh property tells us whether or not this
+    // state was updated in this iteration of the cell controller.
+    // If it hasn't been updated in this iteration, then we don't need
+    // to process it again.
+    if (player.isFresh) {
+      var playerOp = player.op;
+      var moveSpeed;
+      if (player.subtype == 'bot') {
+        moveSpeed = player.speed;
+      } else {
+        moveSpeed = options.playerMoveSpeed;
       }
-    }
-
-    if (playerOp) {
-      var movementVector = {x: 0, y: 0};
-
-      if (playerOp.u) {
-        movementVector.y = -moveSpeed;
-      }
-      if (playerOp.d) {
-        movementVector.y = moveSpeed;
-      }
-      if (playerOp.r) {
-        movementVector.x = moveSpeed;
-      }
-      if (playerOp.l) {
-        movementVector.x = -moveSpeed;
+      if (player.data) {
+        if (player.data.score) {
+          player.score = player.data.score;
+        }
       }
 
-      player.x += movementVector.x;
-      player.y += movementVector.y;
-    }
+      if (playerOp) {
+        var movementVector = {x: 0, y: 0};
 
-    var halfWidth = Math.round(player.width / 2);
-    var halfHeight = Math.round(player.height / 2);
+        if (playerOp.u) {
+          movementVector.y = -moveSpeed;
+        }
+        if (playerOp.d) {
+          movementVector.y = moveSpeed;
+        }
+        if (playerOp.r) {
+          movementVector.x = moveSpeed;
+        }
+        if (playerOp.l) {
+          movementVector.x = -moveSpeed;
+        }
 
-    var leftX = player.x - halfWidth;
-    var rightX = player.x + halfWidth;
-    var topY = player.y - halfHeight;
-    var bottomY = player.y + halfHeight;
+        player.x += movementVector.x;
+        player.y += movementVector.y;
 
-    if (leftX < 0) {
-      player.x = halfWidth;
-    } else if (rightX > options.worldWidth) {
-      player.x = options.worldWidth - halfWidth;
-    }
-    if (topY < 0) {
-      player.y = halfHeight;
-    } else if (bottomY > options.worldHeight) {
-      player.y = options.worldHeight - halfHeight;
+        processedSubtree.player[player.id] = player;
+      }
+
+      var halfWidth = Math.round(player.width / 2);
+      var halfHeight = Math.round(player.height / 2);
+
+      var leftX = player.x - halfWidth;
+      var rightX = player.x + halfWidth;
+      var topY = player.y - halfHeight;
+      var bottomY = player.y + halfHeight;
+
+      if (leftX < 0) {
+        player.x = halfWidth;
+      } else if (rightX > options.worldWidth) {
+        player.x = options.worldWidth - halfWidth;
+      }
+      if (topY < 0) {
+        player.y = halfHeight;
+      } else if (bottomY > options.worldHeight) {
+        player.y = options.worldHeight - halfHeight;
+      }
     }
 
     if (player.overlaps) {
       player.overlaps.forEach(function (otherPlayer) {
-        resolveCollision(player, otherPlayer);
+        resolveCollision(player, otherPlayer, processedSubtree);
       });
       delete player.overlaps;
     }
@@ -138,7 +149,7 @@ function generateHitArea(player) {
   };
 }
 
-function resolveCollision(player, otherPlayer) {
+function resolveCollision(player, otherPlayer, processedSubtree) {
   var currentUser = new SAT.Circle(new SAT.Vector(player.x, player.y), Math.round(player.width / 2));
   var otherUser = new SAT.Circle(new SAT.Vector(otherPlayer.x, otherPlayer.y), Math.round(otherPlayer.width / 2));
   var response = new SAT.Response();
@@ -155,5 +166,8 @@ function resolveCollision(player, otherPlayer) {
     player.y -= olv.y * otherPlayerBuff;
     otherPlayer.x += olv.x * playerBuff;
     otherPlayer.y += olv.y * playerBuff;
+
+    processedSubtree.player[player.id] = player;
+    processedSubtree.player[otherPlayer.id] = otherPlayer;
   }
 }
