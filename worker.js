@@ -12,8 +12,8 @@ var SAT = require('sat');
 var rbush = require('rbush');
 var cellController = require('./cell');
 
-var WORLD_WIDTH = 1000;
-var WORLD_HEIGHT = 1000;
+var WORLD_WIDTH = 2000;
+var WORLD_HEIGHT = 2000;
 var WORLD_CELL_WIDTH = 500;
 var WORLD_CELL_HEIGHT = 500;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
@@ -25,7 +25,7 @@ var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
   It represents the maximum distance that they can be from one another if they
   are in different cells. A smaller distance is more efficient.
 */
-var WORLD_CELL_OVERLAP_DISTANCE = 200;
+var WORLD_CELL_OVERLAP_DISTANCE = 160;
 
 var PLAYER_UPDATE_INTERVAL = 20;
 var PLAYER_MOVE_SPEED = 7;
@@ -38,7 +38,6 @@ var BOT_MASS = 10;
 var BOT_DIAMETER = 120;
 
 var COIN_UPDATE_INTERVAL = 1000;
-// var COIN_TAKEN_INTERVAL = 20;
 var COIN_DROP_INTERVAL = 1000;
 var COIN_MAX_COUNT = 10;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
@@ -186,10 +185,6 @@ module.exports.run = function (worker) {
     channelGrid.watchCellAtIndex('internal/cell-processing-inbound', cellIndex, gridCellDataHandler.bind(null, cellIndex));
   }
 
-  function getVectorLength(v) {
-    return Math.sqrt(v.x * v.x + v.y * v.y);
-  }
-
   function addStateToWorkerDataTree(cellIndex, workerData, state) {
     var id = state.id;
     var swid = state.swid;
@@ -208,35 +203,19 @@ module.exports.run = function (worker) {
 
     var targetCellIndex = channelGrid.getCellIndex(state);
 
-    var cellCenter = channelGrid.getCellCenter(cellIndex);
-    var oldPos = state.positionBeforeProcessing;
-
-    var hasMovedTowardsCell = true;
-    if (oldPos) {
-      delete state.positionBeforeProcessing;
-
-      var oldDistanceFromCellCenter = getVectorLength({
-        x: oldPos.x - cellCenter.x,
-        y: oldPos.y - cellCenter.y
-      });
-
-      var newDistanceFromCellCenter = getVectorLength({
-        x: state.x - cellCenter.x,
-        y: state.y - cellCenter.y
-      });
-
-      hasMovedTowardsCell = newDistanceFromCellCenter < oldDistanceFromCellCenter;
-    }
-
-    if (targetCellIndex == cellIndex || hasMovedTowardsCell) {
+    // This data will be sent out to the upstream worker.
+    if (targetCellIndex == cellIndex || state.clid == cellIndex) {
       workerData[swid][type][id] = state;
     }
 
-    // If the state object is no longer in this cell or in the area immediately
-    // surrounding this cell, we should delete it from our cellData map.
-    if (targetCellIndex != cellIndex && !hasMovedTowardsCell) {
+    // If the state object is no longer in this cell, we should delete
+    // it from our cellData map.
+    if (targetCellIndex != cellIndex || state.clid != cellIndex) {
       delete cellData[cellIndex][type][id];
     }
+    // We need to set this in case there is a disagreement over which cell should
+    // handle a state.
+    state.clid = targetCellIndex;
   }
 
   function dispatchProcessedData(cellIndex) {
@@ -273,7 +252,6 @@ module.exports.run = function (worker) {
       if (!currentCellData[state.type]) {
         currentCellData[state.type] = {};
       }
-      var stateCellIndex = channelGrid.getCellIndex(state);
       /*
         The reason why we don't always copy the state from the upstream worker
         every time is because, by doing so, upstream changes may occasionally conflict
@@ -289,10 +267,6 @@ module.exports.run = function (worker) {
         currentCellData[state.type][state.id] = state;
       }
       var cachedState = currentCellData[state.type][state.id];
-      cachedState.positionBeforeProcessing = {
-        x: cachedState.x,
-        y: cachedState.y
-      };
       cachedState.op = state.op;
       cachedState.data = state.data;
       cachedState.processed = Date.now();
@@ -412,7 +386,8 @@ module.exports.run = function (worker) {
 
   // setInterval(dropCoin, COIN_DROP_INTERVAL);
 
-  for (var b = 0; b < BOT_COUNT; b++) {
+  var botsPerWorker = Math.round(BOT_COUNT / worker.options.workers);
+  for (var b = 0; b < botsPerWorker; b++) {
     botManager.addBot();
   }
 

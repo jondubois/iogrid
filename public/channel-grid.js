@@ -35,9 +35,13 @@ ChannelGrid.prototype.convertCellIndexToCoordinates = function (index) {
   }
 };
 
+ChannelGrid.prototype.convertCoordinatesToCellIndex = function (coords) {
+  return coords.r * this.cols + coords.c;
+};
+
 ChannelGrid.prototype.getCellIndex = function (object) {
   var coords = this.getCellCoordinates(object);
-  return coords.r * this.cols + coords.c;
+  return this.convertCoordinatesToCellIndex(coords);
 };
 
 ChannelGrid.prototype.getCellCoordinates = function (object) {
