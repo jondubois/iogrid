@@ -25,17 +25,17 @@ var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
   It represents the maximum distance that they can be from one another if they
   are in different cells. A smaller distance is more efficient.
 */
-var WORLD_CELL_OVERLAP_DISTANCE = 160;
+var WORLD_CELL_OVERLAP_DISTANCE = 130;
 
-var PLAYER_UPDATE_INTERVAL = 20;
-var PLAYER_MOVE_SPEED = 7;
-var PLAYER_DIAMETER = 150;
+var PLAYER_UPDATE_INTERVAL = 40;
+var PLAYER_MOVE_SPEED = 10;
+var PLAYER_DIAMETER = 100;
 var PLAYER_MASS = 5;
 
-var BOT_COUNT = 0;
-var BOT_MOVE_SPEED = 4;
+var BOT_COUNT = 4;
+var BOT_MOVE_SPEED = 5;
 var BOT_MASS = 10;
-var BOT_DIAMETER = 120;
+var BOT_DIAMETER = 100;
 
 var COIN_UPDATE_INTERVAL = 1000;
 var COIN_DROP_INTERVAL = 1000;
