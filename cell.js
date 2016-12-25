@@ -50,6 +50,13 @@ var CellController = function (options) {
     coinRadius: options.coinRadius
   });
   this.lastCoinDrop = 0;
+  this.lastBotMove = 0;
+  this.botMoves = [
+    {u: 1},
+    {d: 1},
+    {r: 1},
+    {l: 1}
+  ];
 };
 
 /*
@@ -68,6 +75,7 @@ CellController.prototype.run = function (cellData, done) {
   this.removeStalePlayers(players);
   this.findPlayerOverlaps(players, coins);
   this.dropCoins(coins);
+  this.generateBotOps(players);
   this.applyPlayerOps(players, coins);
 
   done();
@@ -85,6 +93,31 @@ CellController.prototype.dropCoins = function (coins) {
     if (coin) {
       coins[coin.id] = coin;
     }
+  }
+};
+
+CellController.prototype.generateBotOps = function (players, coins) {
+  var self = this;
+  var now = Date.now();
+
+  if (now - self.lastBotMove >= self.options.worldUpdateInterval) {
+    self.lastBotMove = now;
+    Object.keys(players).forEach(function (playerId) {
+      var player = players[playerId];
+      if (player.subtype == 'bot') {
+        var radius = Math.round(player.width / 2)
+        var isBotOnEdge = player.x <= radius || player.x >= self.options.worldWidth - radius ||
+          player.y <= radius || player.y >= self.options.worldHeight - radius;
+
+        if (Math.random() <= player.changeDirProb || isBotOnEdge) {
+          var randIndex = Math.floor(Math.random() * 4);
+          player.repeatOp = self.botMoves[randIndex];
+        }
+        if (player.repeatOp) {
+          player.op = player.repeatOp;
+        }
+      }
+    });
   }
 };
 

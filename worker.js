@@ -35,19 +35,20 @@ var WORLD_UPDATE_INTERVAL = 40
 
 var PLAYER_MOVE_SPEED = 10;
 var PLAYER_DIAMETER = 120;
-var PLAYER_MASS = 5;
+var PLAYER_MASS = 20;
 
 // Note that the number of bots needs to be either 0 or a multiple of the number of
 // worker processes or else it will get rounded up/down.
-var BOT_COUNT = 0;
-var BOT_MOVE_SPEED = 5;
+var BOT_COUNT = 20;
+var BOT_MOVE_SPEED = 10;
 var BOT_MASS = 10;
 var BOT_DIAMETER = 100;
+var BOT_CHANGE_DIRECTION_PROBABILITY = 0.01;
 
 var COIN_UPDATE_INTERVAL = 1000;
 var COIN_DROP_INTERVAL = 1000;
 var COIN_RADIUS = 12;
-var COIN_MAX_COUNT = 0;
+var COIN_MAX_COUNT = 100;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
 
 var CHANNEL_INBOUND_CELL_PROCESSING = 'internal/cell-processing-inbound';
@@ -139,6 +140,7 @@ module.exports.run = function (worker) {
     botDiameter: BOT_DIAMETER,
     botMoveSpeed: BOT_MOVE_SPEED,
     botMass: BOT_MASS,
+    botChangeDirectionProbability: BOT_CHANGE_DIRECTION_PROBABILITY,
     stateManager: stateManager
   });
 
@@ -256,6 +258,7 @@ module.exports.run = function (worker) {
       scServer.exchange.publish('internal/input-cell-transition/' + swid, workerStateRefList[swid]);
     });
 
+    // Pass states off to adjacent cells as they move across grid cells.
     var allNearbyCellIndexes = Object.keys(statesForNearbyCells);
     allNearbyCellIndexes.forEach(function (nearbyCellIndex) {
       channelGrid.publishToCells(CHANNEL_CELL_TRANSITION, statesForNearbyCells[nearbyCellIndex], [nearbyCellIndex]);
@@ -385,12 +388,7 @@ module.exports.run = function (worker) {
     });
   }
 
-  function updateWorldState() {
-    botManager.moveBotsRandomly();
-    processInputStates();
-  }
-
-  setInterval(updateWorldState, WORLD_UPDATE_INTERVAL);
+  setInterval(processInputStates, WORLD_UPDATE_INTERVAL);
 
   var botsPerWorker = Math.round(BOT_COUNT / worker.options.workers);
   for (var b = 0; b < botsPerWorker; b++) {
