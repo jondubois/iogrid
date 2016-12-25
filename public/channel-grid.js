@@ -63,8 +63,17 @@ ChannelGrid.prototype.getCellBounds = function (cellIndex) {
   };
 };
 
-ChannelGrid.prototype.getAllCellCoordinates = function (object) {
+ChannelGrid.prototype.getAllCellCoordinates = function (object, options) {
+  if (!options) {
+    options = {};
+  }
   var overlapDist = this.cellOverlapDistance;
+  var exclusions = {};
+  if (options.excludeCellIndexes) {
+    options.excludeCellIndexes.forEach(function (cellIndex) {
+      exclusions[cellIndex] = true;
+    });
+  }
 
   var objectArea = {
     minX: object.x - overlapDist,
@@ -81,20 +90,24 @@ ChannelGrid.prototype.getAllCellCoordinates = function (object) {
     y: objectArea.maxY
   });
   var gridArea = {
-    minC: minCell.c,
-    minR: minCell.r,
-    maxC: maxCell.c,
-    maxR: maxCell.r
+    minC: Math.max(minCell.c, 0),
+    minR: Math.max(minCell.r, 0),
+    maxC: Math.min(maxCell.c, this.cols - 1),
+    maxR: Math.min(maxCell.r, this.rows - 1)
   };
 
   var affectedCells = [];
 
   for (var r = gridArea.minR; r <= gridArea.maxR; r++) {
     for (var c = gridArea.minC; c <= gridArea.maxC; c++) {
-      affectedCells.push({
+      var coords = {
         r: r,
         c: c
-      });
+      };
+      var cellIndex = this.convertCoordinatesToCellIndex(coords);
+      if (!exclusions[cellIndex]) {
+        affectedCells.push(coords);
+      }
     }
   }
   return affectedCells;
@@ -115,13 +128,38 @@ ChannelGrid.prototype._getGridChannelName = function (channelName, col, row) {
   return 'cell(' + col + ',' + row + ')' + channelName;
 };
 
-ChannelGrid.prototype.publish = function (channelName, objects) {
+
+ChannelGrid.prototype._flushPublishGrid = function (channelName, grid) {
+  for (var r = 0; r < this.rows; r++) {
+    for (var c = 0; c < this.cols; c++) {
+      if (grid[r] && grid[r][c]) {
+        var states = grid[r][c];
+        if (states.length) {
+          this.exchange.publish(this._getGridChannelName(channelName, c, r), states);
+        }
+      }
+    }
+  }
+};
+
+
+ChannelGrid.prototype.publish = function (channelName, objects, options) {
   var self = this;
+  if (!options) {
+    options = {};
+  }
 
   var grid = this._generateEmptyGrid(this.rows, this.cols);
 
   objects.forEach(function (obj) {
-    var affectedCells = self.getAllCellCoordinates(obj);
+    var affectedCells;
+    if (options.useClid) {
+      affectedCells = [self.convertCellIndexToCoordinates(obj.clid)];
+    } else if (options.includeNearbyCells) {
+      affectedCells = self.getAllCellCoordinates(obj);
+    } else {
+      affectedCells = [self.getCellCoordinates(obj)];
+    }
     affectedCells.forEach(function (cell) {
       if (grid[cell.r] && grid[cell.r][cell.c]) {
         grid[cell.r][cell.c].push(obj);
@@ -129,16 +167,28 @@ ChannelGrid.prototype.publish = function (channelName, objects) {
     });
   });
 
-  for (var r = 0; r < this.rows; r++) {
-    for (var c = 0; c < this.cols; c++) {
-      if (grid[r] && grid[r][c]) {
-        var states = grid[r][c];
-        if (states.length) {
-          self.exchange.publish(self._getGridChannelName(channelName, c, r), states);
-        }
+  this._flushPublishGrid(channelName, grid);
+};
+
+ChannelGrid.prototype.publishToCells = function (channelName, objects, cellIndexes) {
+  var self = this;
+
+  var grid = this._generateEmptyGrid(this.rows, this.cols);
+
+  var targetCells = [];
+  cellIndexes.forEach(function (index) {
+    targetCells.push(self.convertCellIndexToCoordinates(index));
+  });
+
+  objects.forEach(function (obj) {
+    targetCells.forEach(function (cell) {
+      if (grid[cell.r] && grid[cell.r][cell.c]) {
+        grid[cell.r][cell.c].push(obj);
       }
-    }
-  }
+    });
+  });
+
+  this._flushPublishGrid(channelName, grid);
 };
 
 ChannelGrid.prototype.watchCell = function (channelName, col, row, watcher) {

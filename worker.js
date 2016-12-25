@@ -5,7 +5,6 @@ var path = require('path');
 var morgan = require('morgan');
 var healthChecker = require('sc-framework-health-check');
 var StateManager = require('./state-manager').StateManager;
-// var CoinManager = require('./coin-manager').CoinManager;
 var BotManager = require('./bot-manager').BotManager;
 var uuid = require('uuid');
 var ChannelGrid = require('./public/channel-grid').ChannelGrid;
@@ -14,13 +13,13 @@ var rbush = require('rbush');
 var scCodecMinBin = require('sc-codec-min-bin');
 var CellController = require('./cell');
 
-var WORLD_WIDTH = 2000;
-var WORLD_HEIGHT = 2000;
+var WORLD_WIDTH = 1000;
+var WORLD_HEIGHT = 1000;
 
 // Dividing the world into vertical or horizontal strips (instead of cells)
 // is more efficient.
 var WORLD_CELL_WIDTH = 500;
-var WORLD_CELL_HEIGHT = 2000;
+var WORLD_CELL_HEIGHT = 1000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
 var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
@@ -31,16 +30,16 @@ var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
   It represents the maximum distance that they can be from one another if they
   are in different cells. A smaller distance is more efficient.
 */
-var WORLD_CELL_OVERLAP_DISTANCE = 110;
+var WORLD_CELL_OVERLAP_DISTANCE = 150;
 var WORLD_UPDATE_INTERVAL = 40
 
 var PLAYER_MOVE_SPEED = 10;
-var PLAYER_DIAMETER = 100;
+var PLAYER_DIAMETER = 120;
 var PLAYER_MASS = 5;
 
 // Note that the number of bots needs to be either 0 or a multiple of the number of
 // worker processes or else it will get rounded up/down.
-var BOT_COUNT = 4;
+var BOT_COUNT = 0;
 var BOT_MOVE_SPEED = 5;
 var BOT_MASS = 10;
 var BOT_DIAMETER = 100;
@@ -48,11 +47,14 @@ var BOT_DIAMETER = 100;
 var COIN_UPDATE_INTERVAL = 1000;
 var COIN_DROP_INTERVAL = 1000;
 var COIN_RADIUS = 12;
-var COIN_MAX_COUNT = 10;
+var COIN_MAX_COUNT = 0;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
 
+var CHANNEL_INBOUND_CELL_PROCESSING = 'internal/cell-processing-inbound';
+var CHANNEL_CELL_TRANSITION = 'internal/cell-transition';
+
 var game = {
-  states: {}
+  stateRefs: {}
 };
 
 function getRandomPosition(spriteWidth, spriteHeight) {
@@ -114,29 +116,6 @@ module.exports.run = function (worker) {
     }
   });
 
-  // var coinManager = new CoinManager({
-  //   serverWorkerId: serverWorkerId,
-  //   worldWidth: WORLD_WIDTH,
-  //   worldHeight: WORLD_HEIGHT,
-  //   maxCoinCount: COIN_MAX_COUNT,
-  //   playerNoDropRadius: COIN_PLAYER_NO_DROP_RADIUS,
-  //   players: game.players
-  // });
-
-  var stateManager = new StateManager({
-    states: game.states
-  });
-
-  var botManager = new BotManager({
-    serverWorkerId: serverWorkerId,
-    worldWidth: WORLD_WIDTH,
-    worldHeight: WORLD_HEIGHT,
-    botDiameter: BOT_DIAMETER,
-    botMoveSpeed: BOT_MOVE_SPEED,
-    botMass: BOT_MASS,
-    states: game.states
-  });
-
   // This allows us to break up our channels into a grid of cells which we can
   // watch and publish to individually.
   var channelGrid = new ChannelGrid({
@@ -148,44 +127,19 @@ module.exports.run = function (worker) {
     exchange: scServer.exchange
   });
 
-  scServer.exchange.subscribe('internal/cell-processing-outbound/' + serverWorkerId)
-  .watch(function (data) {
-    var playerIds = Object.keys(data.player);
-    playerIds.forEach(function (id) {
-      var targetPlayerState = game.states[id];
-      if (targetPlayerState) {
-        var sourcePlayerState = data.player[id];
-        // The cell controller can overwrite every property except for the op
-        // and data properties.
-        var freshOp = targetPlayerState.op;
-        var freshDelete = targetPlayerState.delete;
-        var freshData = targetPlayerState.data;
+  var stateManager = new StateManager({
+    stateRefs: game.stateRefs,
+    channelGrid: channelGrid
+  });
 
-        for (var i in targetPlayerState) {
-          if (targetPlayerState.hasOwnProperty(i)) {
-            delete targetPlayerState[i];
-          }
-        }
-        for (var j in sourcePlayerState) {
-          if (sourcePlayerState.hasOwnProperty(j)) {
-            targetPlayerState[j] = sourcePlayerState[j];
-          }
-        }
-        if (freshOp) {
-          targetPlayerState.op = freshOp;
-        } else {
-          delete targetPlayerState.op;
-        }
-        if (freshDelete) {
-          targetPlayerState.delete = freshDelete;
-        } else {
-          delete targetPlayerState.delete;
-        }
-        if (freshData) {
-          targetPlayerState.data = freshData;
-        }
-      }
-    });
+  var botManager = new BotManager({
+    serverWorkerId: serverWorkerId,
+    worldWidth: WORLD_WIDTH,
+    worldHeight: WORLD_HEIGHT,
+    botDiameter: BOT_DIAMETER,
+    botMoveSpeed: BOT_MOVE_SPEED,
+    botMass: BOT_MASS,
+    stateManager: stateManager
   });
 
   if (WORLD_CELLS % worker.options.workers != 0) {
@@ -215,41 +169,8 @@ module.exports.run = function (worker) {
       worldUpdateInterval: WORLD_UPDATE_INTERVAL,
       playerMoveSpeed: PLAYER_MOVE_SPEED
     });
-    channelGrid.watchCellAtIndex('internal/cell-processing-inbound', cellIndex, gridCellDataHandler.bind(null, cellIndex));
-  }
-
-  function prepareWorkerDataTree(cellIndex, workerData, state) {
-    var id = state.id;
-    var swid = state.swid;
-    var type = state.type;
-
-    if (state.op) {
-      delete state.op;
-    }
-    if (state.isFresh) {
-      delete state.isFresh;
-    }
-
-    var targetCellIndex = channelGrid.getCellIndex(state);
-
-    // If the state object is no longer in this cell, we should delete
-    // it from our cellData map.
-    if (targetCellIndex != cellIndex) {
-      delete cellData[cellIndex][type][id];
-    }
-
-    if (swid) {
-      // This data will be sent out to the upstream worker.
-      if (targetCellIndex == cellIndex) {
-        if (!workerData[swid]) {
-          workerData[swid] = {};
-        }
-        if (!workerData[swid][type]) {
-          workerData[swid][type] = {};
-        }
-        workerData[swid][type][id] = state;
-      }
-    }
+    channelGrid.watchCellAtIndex(CHANNEL_INBOUND_CELL_PROCESSING, cellIndex, gridCellDataHandler.bind(null, cellIndex));
+    channelGrid.watchCellAtIndex(CHANNEL_CELL_TRANSITION, cellIndex, gridCellTransitionHandler.bind(null, cellIndex));
   }
 
   function forEachStateInDataTree(dataTree, callback) {
@@ -265,73 +186,127 @@ module.exports.run = function (worker) {
     });
   }
 
-  function dispatchProcessedData(cellIndex, processedSubtree) {
-    var workerData = {};
+  function dispatchProcessedData(cellIndex) {
     var currentCellData = cellData[cellIndex];
+    var workerStateRefList = {};
+    var statesForNearbyCells = {};
 
-    if (processedSubtree) { // TODO: THINK
-      forEachStateInDataTree(processedSubtree, function (state) {
-        var type = state.type;
-        var id = state.id;
+    forEachStateInDataTree(currentCellData, function (state) {
+      var id = state.id;
+      var swid = state.swid;
+      var type = state.type;
 
-        if (!currentCellData[type]) {
-          currentCellData[type] = {};
+      if (state.op) {
+        delete state.op;
+      }
+      if (state.isFresh) {
+        delete state.isFresh;
+      }
+
+      var stateOwnerCellIndex = channelGrid.getCellIndex(state);
+      var nearbyCellIndexes = channelGrid.getAllCellIndexes(state);
+
+      if (stateOwnerCellIndex == cellIndex) {
+        nearbyCellIndexes.forEach(function (nearbyCellIndex) {
+          if (nearbyCellIndex != cellIndex) {
+            if (!statesForNearbyCells[nearbyCellIndex]) {
+              statesForNearbyCells[nearbyCellIndex] = [];
+            }
+            statesForNearbyCells[nearbyCellIndex].push(state);
+          }
+        });
+      }
+      var hasChangedOwnerCells = (state.clid != stateOwnerCellIndex);
+      state.clid = stateOwnerCellIndex;
+      if (hasChangedOwnerCells && swid) {
+        if (!workerStateRefList[swid]) {
+          workerStateRefList[swid] = [];
         }
-        if (!currentCellData[type][id]) {
-          currentCellData[type][id] = state;
+        var stateRef = {
+          id: state.id,
+          swid: state.swid,
+          clid: state.clid,
+          type: state.type
+        };
+        if (state.delete) {
+          stateRef.delete = state.delete;
         }
-        prepareWorkerDataTree(cellIndex, workerData, state);
-      });
-    } else {
-      forEachStateInDataTree(currentCellData, function (state) {
-        prepareWorkerDataTree(cellIndex, workerData, state);
-      });
-    }
+        workerStateRefList[swid].push(stateRef);
+      }
 
-    // This after we've processed the data in our cell controller, we will send it back
-    // to the appropriate workers (based on swid) which will then redistribute it to players.
-    var workerIdList = Object.keys(workerData);
-    workerIdList.forEach(function (swid) {
-      scServer.exchange.publish('internal/cell-processing-outbound/' + swid, workerData[swid]);
+      var currentCellIsNearby = false;
+      nearbyCellIndexes.forEach(function (nearbyCellIndex) {
+        if (nearbyCellIndex == cellIndex) {
+          currentCellIsNearby = true;
+        }
+      });
+
+      if (!currentCellIsNearby) {
+        delete currentCellData[type][id];
+      }
+      if (state.delete) {
+        delete state.delete;
+      }
     });
-  };
+
+    var workerCellTransferIds = Object.keys(workerStateRefList);
+    workerCellTransferIds.forEach(function (swid) {
+      scServer.exchange.publish('internal/input-cell-transition/' + swid, workerStateRefList[swid]);
+    });
+
+    var allNearbyCellIndexes = Object.keys(statesForNearbyCells);
+    allNearbyCellIndexes.forEach(function (nearbyCellIndex) {
+      channelGrid.publishToCells(CHANNEL_CELL_TRANSITION, statesForNearbyCells[nearbyCellIndex], [nearbyCellIndex]);
+    });
+  }
+
+  function gridCellTransitionHandler(cellIndex, stateList) {
+    var currentCellData = cellData[cellIndex];
+    stateList.forEach(function (state) {
+      var type = state.type;
+      if (!currentCellData[type]) {
+        currentCellData[type] = {};
+      }
+      currentCellData[type][state.id] = state;
+    });
+  }
 
   // Here we handle and prepare data for a single cell within our game grid to be
   // processed by our cell controller.
   function gridCellDataHandler(cellIndex, stateList) {
-    var cachedStateList = [];
     var currentCellData = cellData[cellIndex];
     stateList.forEach(function (state) {
-      if (!currentCellData[state.type]) {
-        currentCellData[state.type] = {};
+      var id = state.id;
+      var type = state.type;
+
+      if (!currentCellData[type]) {
+        currentCellData[type] = {};
       }
-      /*
-        The reason why we don't always copy the state from the upstream worker
-        every time is because, by doing so, upstream changes may occasionally conflict
-        with changes made by our cell controller.
-        So we only cache the state data the first time we see it in this cell;
-        after this, any further state changes should be made by the cell controller.
-        The only two properties which we allow the upstream worker to change are the 'op'
-        and 'data' properties. The 'op' property can can carry single-use operations/actions
-        to be interpreted by the cell controller.
-        The 'data' property can carry any long-term custom data.
-      */
-      if (!currentCellData[state.type][state.id]) {
-        currentCellData[state.type][state.id] = state;
+
+      if (!currentCellData[type][id]) {
+        if (state.create) {
+          // If is a stateRef
+          currentCellData[type][id] = state.create;
+        } else if (state.x != null && state.y != null) {
+          // If we have x and y properties, then we know that
+          // this is a full state.
+          currentCellData[type][id] = state;
+        }
       }
-      var cachedState = currentCellData[state.type][state.id];
-      if (state.op) {
-        cachedState.op = state.op;
+      var cachedState = currentCellData[type][id];
+      if (cachedState) {
+        if (state.op) {
+          cachedState.op = state.op;
+        }
+        if (state.delete) {
+          cachedState.delete = state.delete;
+        }
+        if (state.data) {
+          cachedState.data = state.data;
+        }
+        cachedState.isFresh = true;
+        cachedState.processed = Date.now();
       }
-      if (state.delete) {
-        cachedState.delete = state.delete;
-      }
-      if (state.data) {
-        cachedState.data = state.data;
-      }
-      cachedState.isFresh = true;
-      cachedState.processed = Date.now();
-      cachedStateList.push(cachedState);
     });
 
     cellControllers[cellIndex].run(currentCellData, dispatchProcessedData.bind(null, cellIndex));
@@ -355,7 +330,6 @@ module.exports.run = function (worker) {
         });
       });
     });
-
     // External channel which clients can subscribe to.
     // It will publish to multiple channels based on each state's
     // (x, y) coordinates.
@@ -363,49 +337,39 @@ module.exports.run = function (worker) {
   }, WORLD_UPDATE_INTERVAL);
 
 
+  scServer.exchange.subscribe('internal/input-cell-transition/' + serverWorkerId)
+  .watch(function (stateList) {
+    stateList.forEach(function (state) {
+      game.stateRefs[state.id] = state;
+    });
+  });
+
   // This is the main input loop which feeds states into various cells
   // based on their (x, y) coordinates.
   function processInputStates() {
     var stateList = [];
-    var stateIds = Object.keys(game.states);
+    var stateIds = Object.keys(game.stateRefs);
 
     stateIds.forEach(function (id) {
-      var state = game.states[id];
+      var state = game.stateRefs[id];
       stateList.push(state);
     });
 
     // Publish to internal channel for processing (e.g. Collision
     // detection and resolution, scoring, etc...)
     // These states will be processed by various cell controllers depending
-    // on each state's (x, y) coordinates within the world grid.
-    channelGrid.publish('internal/cell-processing-inbound', stateList);
+    // on each state's cell index (clid) within the world grid.
+    channelGrid.publish(CHANNEL_INBOUND_CELL_PROCESSING, stateList, {useClid: true});
 
     stateList.forEach(function (state) {
       if (state.op) {
         delete state.op;
       }
       if (state.delete) {
-        delete game.states[state.id];
+        delete game.stateRefs[state.id];
       }
     });
   }
-
-  // function flushCoinData() {
-  //   var coinStates = [];
-  //   for (var j in coinManager.coins) {
-  //     if (coinManager.coins.hasOwnProperty(j)) {
-  //       coinStates.push(coinManager.coins[j]);
-  //     }
-  //   }
-  //   channelGrid.publish('coin-states', coinStates);
-  // }
-
-  // function flushCoinsTakenData() {
-  //   if (removedCoins.length) {
-  //     channelGrid.publish('coins-taken', removedCoins);
-  //     removedCoins = [];
-  //   }
-  // }
 
   function updateWorldState() {
     botManager.moveBotsRandomly();
@@ -413,13 +377,6 @@ module.exports.run = function (worker) {
   }
 
   setInterval(updateWorldState, WORLD_UPDATE_INTERVAL);
-
-  // var dropCoin = function () {
-  //   // Drop a coin with value 1 and a radius of 12
-  //   coinManager.addCoin(1, 12);
-  // };
-
-  // setInterval(dropCoin, COIN_DROP_INTERVAL);
 
   var botsPerWorker = Math.round(BOT_COUNT / worker.options.workers);
   for (var b = 0; b < botsPerWorker; b++) {

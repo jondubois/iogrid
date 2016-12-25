@@ -65,20 +65,15 @@ CellController.prototype.run = function (cellData, done) {
   var players = cellData.player;
   var coins = cellData.coin;
 
-  var processedSubtree = {
-    player: {},
-    coin: {}
-  };
-
   this.removeStalePlayers(players);
   this.findPlayerOverlaps(players, coins);
-  this.dropCoins(coins, processedSubtree);
-  this.applyPlayerOps(players, coins, processedSubtree);
+  this.dropCoins(coins);
+  this.applyPlayerOps(players, coins);
 
-  done(processedSubtree);
+  done();
 };
 
-CellController.prototype.dropCoins = function (coins, processedSubtree) {
+CellController.prototype.dropCoins = function (coins) {
   var now = Date.now();
 
   if (now - this.lastCoinDrop >= this.coinManager.coinDropInterval &&
@@ -88,13 +83,12 @@ CellController.prototype.dropCoins = function (coins, processedSubtree) {
     // Add a coin with a score value of 1 and radius of 12 pixels.
     var coin = this.coinManager.addCoin(1, 12);
     if (coin) {
-      // processedSubtree.coin[coin.id] = coin;
       coins[coin.id] = coin;
     }
   }
 };
 
-CellController.prototype.applyPlayerOps = function (players, coins, processedSubtree) {
+CellController.prototype.applyPlayerOps = function (players, coins) {
   var self = this;
 
   var playerIds = Object.keys(players);
@@ -132,8 +126,6 @@ CellController.prototype.applyPlayerOps = function (players, coins, processedSub
 
         player.x += movementVector.x;
         player.y += movementVector.y;
-
-        processedSubtree.player[player.id] = player;
       }
 
       var halfWidth = Math.round(player.width / 2);
@@ -158,7 +150,7 @@ CellController.prototype.applyPlayerOps = function (players, coins, processedSub
 
     if (player.playerOverlaps) {
       player.playerOverlaps.forEach(function (otherPlayer) {
-        self.resolvePlayerCollision(player, otherPlayer, processedSubtree);
+        self.resolvePlayerCollision(player, otherPlayer);
       });
       delete player.playerOverlaps;
     }
@@ -264,7 +256,7 @@ CellController.prototype.testCircleCollision = function (a, b) {
   };
 };
 
-CellController.prototype.resolvePlayerCollision = function (player, otherPlayer, processedSubtree) {
+CellController.prototype.resolvePlayerCollision = function (player, otherPlayer) {
   var result = this.testCircleCollision(player, otherPlayer);
 
   if (result.collided) {
@@ -278,9 +270,6 @@ CellController.prototype.resolvePlayerCollision = function (player, otherPlayer,
     player.y -= olv.y * otherPlayerBuff;
     otherPlayer.x += olv.x * playerBuff;
     otherPlayer.y += olv.y * playerBuff;
-
-    processedSubtree.player[player.id] = player;
-    processedSubtree.player[otherPlayer.id] = otherPlayer;
   }
 };
 

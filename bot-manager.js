@@ -14,7 +14,7 @@ var BotManager = function (options) {
   this.botMoveSpeed = options.botMoveSpeed || BOT_DEFAULT_SPEED;
   this.botMass = options.botMass || BOT_DEFAULT_MASS;
 
-  this.states = options.states;
+  this.stateManager = options.stateManager;
   this.bots = {};
   this.botCount = 0;
 
@@ -82,6 +82,7 @@ BotManager.prototype.addBot = function (options) {
   }
   this.bots[botId] = bot;
   this.states[botId] = bot;
+  this.stateManager.create(bot);
   this.botCount++;
 };
 
