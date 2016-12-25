@@ -13,11 +13,14 @@ var rbush = require('rbush');
 var scCodecMinBin = require('sc-codec-min-bin');
 var CellController = require('./cell');
 
-var WORLD_WIDTH = 1000;
+// Having a large world is more efficient. You can divide it up into cells
+// to split up the workload between multiple CPU cores.
+var WORLD_WIDTH = 2000;
 var WORLD_HEIGHT = 1000;
 
 // Dividing the world into vertical or horizontal strips (instead of cells)
-// is more efficient.
+// is more efficient. Using few large cells is much more efficient than using
+// many small ones. Try to use as few as possible - Once cell per worker/CPU core is ideal.
 var WORLD_CELL_WIDTH = 500;
 var WORLD_CELL_HEIGHT = 1000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
@@ -39,7 +42,7 @@ var PLAYER_MASS = 20;
 
 // Note that the number of bots needs to be either 0 or a multiple of the number of
 // worker processes or else it will get rounded up/down.
-var BOT_COUNT = 20;
+var BOT_COUNT = 200;
 var BOT_MOVE_SPEED = 10;
 var BOT_MASS = 10;
 var BOT_DIAMETER = 100;
@@ -165,7 +168,7 @@ module.exports.run = function (worker) {
       cellBounds: channelGrid.getCellBounds(cellIndex),
       coinPlayerNoDropRadius: COIN_PLAYER_NO_DROP_RADIUS,
       coinMaxCount: Math.round(COIN_MAX_COUNT / WORLD_CELLS),
-      coinDropInterval: COIN_DROP_INTERVAL,
+      coinDropInterval: COIN_DROP_INTERVAL * WORLD_CELLS,
       coinRadius: COIN_RADIUS,
       worldWidth: WORLD_WIDTH,
       worldHeight: WORLD_HEIGHT,
