@@ -65,16 +65,19 @@ CoinManager.prototype.addCoin = function (value, radius) {
   radius = radius || this.coinRadius;
   var coinId = uuid.v4();
   var validPosition = this.generateRandomAvailablePosition(radius);
-  var coin = {
-    id: coinId,
-    type: 'coin',
-    v: value || COIN_DEFAULT_VALUE,
-    r: radius,
-    x: validPosition.x,
-    y: validPosition.y
-  };
-  this.coins[coinId] = coin;
-  return coin;
+  if (validPosition) {
+    var coin = {
+      id: coinId,
+      type: 'coin',
+      v: value || COIN_DEFAULT_VALUE,
+      r: radius,
+      x: validPosition.x,
+      y: validPosition.y
+    };
+    this.coins[coinId] = coin;
+    return coin;
+  }
+  return null;
 };
 
 CoinManager.prototype.removeCoin = function (coinId) {

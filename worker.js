@@ -46,7 +46,7 @@ var BOT_MASS = 10;
 var BOT_DIAMETER = 100;
 
 var COIN_UPDATE_INTERVAL = 1000;
-var COIN_DROP_INTERVAL = 100;
+var COIN_DROP_INTERVAL = 1000;
 var COIN_RADIUS = 12;
 var COIN_MAX_COUNT = 10;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
@@ -230,11 +230,17 @@ module.exports.run = function (worker) {
       delete state.isFresh;
     }
 
-    if (swid) {
-      var targetCellIndex = channelGrid.getCellIndex(state);
+    var targetCellIndex = channelGrid.getCellIndex(state);
 
+    // If the state object is no longer in this cell, we should delete
+    // it from our cellData map.
+    if (targetCellIndex != cellIndex) {
+      delete cellData[cellIndex][type][id];
+    }
+
+    if (swid) {
       // This data will be sent out to the upstream worker.
-      if (targetCellIndex == cellIndex || state.clid == cellIndex) {
+      if (targetCellIndex == cellIndex) {
         if (!workerData[swid]) {
           workerData[swid] = {};
         }
@@ -243,15 +249,6 @@ module.exports.run = function (worker) {
         }
         workerData[swid][type][id] = state;
       }
-
-      // If the state object is no longer in this cell, we should delete
-      // it from our cellData map.
-      if (targetCellIndex != cellIndex || state.clid != cellIndex) {
-        delete cellData[cellIndex][type][id];
-      }
-      // We need to set this in case there is a disagreement over which cell should
-      // handle a state.
-      state.clid = targetCellIndex;
     }
   }
 
@@ -272,7 +269,7 @@ module.exports.run = function (worker) {
     var workerData = {};
     var currentCellData = cellData[cellIndex];
 
-    if (processedSubtree) {
+    if (processedSubtree) { // TODO: THINK
       forEachStateInDataTree(processedSubtree, function (state) {
         var type = state.type;
         var id = state.id;
@@ -283,12 +280,13 @@ module.exports.run = function (worker) {
         if (!currentCellData[type][id]) {
           currentCellData[type][id] = state;
         }
+        prepareWorkerDataTree(cellIndex, workerData, state);
+      });
+    } else {
+      forEachStateInDataTree(currentCellData, function (state) {
+        prepareWorkerDataTree(cellIndex, workerData, state);
       });
     }
-
-    forEachStateInDataTree(currentCellData, function (state) {
-      prepareWorkerDataTree(cellIndex, workerData, state);
-    });
 
     // This after we've processed the data in our cell controller, we will send it back
     // to the appropriate workers (based on swid) which will then redistribute it to players.
@@ -351,7 +349,7 @@ module.exports.run = function (worker) {
         ids.forEach(function (id) {
           var state = currentCellData[type][id];
           var targetCellIndex = channelGrid.getCellIndex(state);
-          if (targetCellIndex == cellIndex || state.clid == cellIndex) {
+          if (targetCellIndex == cellIndex) {
             statesList.push(state);
           }
         });
@@ -461,9 +459,6 @@ module.exports.run = function (worker) {
         height: PLAYER_DIAMETER,
         mass: PLAYER_MASS,
         score: 0,
-        data: {
-          score: 0
-        },
         processed: Date.now()
       };
 
