@@ -150,6 +150,7 @@ module.exports.run = function (worker) {
 
   var cellsPerWorker = WORLD_CELLS / worker.options.workers;
   var cellData = {};
+  var pendingCellDataUpdates = {};
   var cellControllers = {};
 
   for (var h = 0; h < cellsPerWorker; h++) {
@@ -169,6 +170,7 @@ module.exports.run = function (worker) {
       worldUpdateInterval: WORLD_UPDATE_INTERVAL,
       playerMoveSpeed: PLAYER_MOVE_SPEED
     });
+    pendingCellDataUpdates[cellIndex] = {};
     channelGrid.watchCellAtIndex(CHANNEL_INBOUND_CELL_PROCESSING, cellIndex, gridCellDataHandler.bind(null, cellIndex));
     channelGrid.watchCellAtIndex(CHANNEL_CELL_TRANSITION, cellIndex, gridCellTransitionHandler.bind(null, cellIndex));
   }
@@ -261,13 +263,14 @@ module.exports.run = function (worker) {
   }
 
   function gridCellTransitionHandler(cellIndex, stateList) {
+    var pendingCellData = pendingCellDataUpdates[cellIndex];
     var currentCellData = cellData[cellIndex];
     stateList.forEach(function (state) {
       var type = state.type;
-      if (!currentCellData[type]) {
-        currentCellData[type] = {};
+      if (!pendingCellData[type]) {
+        pendingCellData[type] = {};
       }
-      currentCellData[type][state.id] = state;
+      pendingCellData[type][state.id] = state;
     });
   }
 
@@ -275,6 +278,17 @@ module.exports.run = function (worker) {
   // processed by our cell controller.
   function gridCellDataHandler(cellIndex, stateList) {
     var currentCellData = cellData[cellIndex];
+    var pendingCellData = pendingCellDataUpdates[cellIndex];
+
+    Object.keys(pendingCellData).forEach(function (type) {
+      if (!currentCellData[type]) {
+        currentCellData[type] = {};
+      }
+      Object.keys(pendingCellData[type]).forEach(function (id) {
+        currentCellData[type][id] = pendingCellData[type][id];
+      });
+    });
+
     stateList.forEach(function (state) {
       var id = state.id;
       var type = state.type;
