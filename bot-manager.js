@@ -84,6 +84,7 @@ BotManager.prototype.addBot = function (options) {
 
 BotManager.prototype.removeBot = function (botId) {
   if (this.bots[botId]) {
+    this.stateManager.delete(this.bots[botId]);
     delete this.bots[botId];
     this.botCount--;
   }

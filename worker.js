@@ -15,7 +15,7 @@ var CellController = require('./cell');
 
 // Having a large world is more efficient. You can divide it up into cells
 // to split up the workload between multiple CPU cores.
-var WORLD_WIDTH = 2000;
+var WORLD_WIDTH = 1000;
 var WORLD_HEIGHT = 1000;
 
 // Dividing the world into vertical or horizontal strips (instead of cells)
@@ -42,7 +42,7 @@ var PLAYER_MASS = 20;
 
 // Note that the number of bots needs to be either 0 or a multiple of the number of
 // worker processes or else it will get rounded up/down.
-var BOT_COUNT = 4;
+var BOT_COUNT = 0;
 var BOT_MOVE_SPEED = 10;
 var BOT_MASS = 10;
 var BOT_DIAMETER = 100;
@@ -51,7 +51,7 @@ var BOT_CHANGE_DIRECTION_PROBABILITY = 0.01;
 var COIN_UPDATE_INTERVAL = 1000;
 var COIN_DROP_INTERVAL = 1000;
 var COIN_RADIUS = 12;
-var COIN_MAX_COUNT = 100;
+var COIN_MAX_COUNT = 0;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
 
 var CHANNEL_INBOUND_CELL_PROCESSING = 'internal/cell-processing-inbound';
@@ -210,10 +210,9 @@ module.exports.run = function (worker) {
         delete state.isFresh;
       }
 
-      var stateOwnerCellIndex = channelGrid.getCellIndex(state);
       var nearbyCellIndexes = channelGrid.getAllCellIndexes(state);
 
-      if (stateOwnerCellIndex == cellIndex) {
+      if (state.clid == cellIndex) {
         nearbyCellIndexes.forEach(function (nearbyCellIndex) {
           if (nearbyCellIndex != cellIndex) {
             if (!statesForNearbyCells[nearbyCellIndex]) {
@@ -223,7 +222,9 @@ module.exports.run = function (worker) {
           }
         });
       }
+      var stateOwnerCellIndex = channelGrid.getCellIndex(state);
       var hasChangedOwnerCells = (state.clid != stateOwnerCellIndex);
+
       state.clid = stateOwnerCellIndex;
       if (hasChangedOwnerCells && swid) {
         if (!workerStateRefList[swid]) {
@@ -241,16 +242,10 @@ module.exports.run = function (worker) {
         workerStateRefList[swid].push(stateRef);
       }
 
-      var currentCellIsNearby = false;
-      nearbyCellIndexes.forEach(function (nearbyCellIndex) {
-        if (nearbyCellIndex == cellIndex) {
-          currentCellIsNearby = true;
-        }
-      });
-
-      if (!currentCellIsNearby) {
+      if (state.clid != cellIndex) {
         delete currentCellData[type][id];
       }
+
       if (state.delete) {
         delete state.delete;
       }
@@ -270,7 +265,6 @@ module.exports.run = function (worker) {
 
   function gridCellTransitionHandler(cellIndex, stateList) {
     var pendingCellData = pendingCellDataUpdates[cellIndex];
-    var currentCellData = cellData[cellIndex];
     stateList.forEach(function (state) {
       var type = state.type;
       if (!pendingCellData[type]) {
@@ -295,19 +289,21 @@ module.exports.run = function (worker) {
       });
     });
 
-    stateList.forEach(function (state) {
-      var id = state.id;
-      var type = state.type;
+    pendingCellDataUpdates[cellIndex] = {};
+
+    stateList.forEach(function (stateRef) {
+      var id = stateRef.id;
+      var type = stateRef.type;
 
       if (!currentCellData[type]) {
         currentCellData[type] = {};
       }
 
       if (!currentCellData[type][id]) {
-        if (state.create) {
+        if (stateRef.create) {
           // If is a stateRef
-          currentCellData[type][id] = state.create;
-        } else if (state.x != null && state.y != null) {
+          currentCellData[type][id] = stateRef.create;
+        } else if (stateRef.x != null && stateRef.y != null) {
           // If we have x and y properties, then we know that
           // this is a full state.
           currentCellData[type][id] = state;
@@ -315,15 +311,16 @@ module.exports.run = function (worker) {
       }
       var cachedState = currentCellData[type][id];
       if (cachedState) {
-        if (state.op) {
-          cachedState.op = state.op;
+        if (stateRef.op) {
+          cachedState.op = stateRef.op;
         }
-        if (state.delete) {
-          cachedState.delete = state.delete;
+        if (stateRef.delete) {
+          cachedState.delete = stateRef.delete;
         }
-        if (state.data) {
-          cachedState.data = state.data;
+        if (stateRef.data) {
+          cachedState.data = stateRef.data;
         }
+        cachedState.clid = channelGrid.getCellIndex(cachedState);
         cachedState.isFresh = true;
         cachedState.processed = Date.now();
       }
@@ -343,17 +340,16 @@ module.exports.run = function (worker) {
         var ids = Object.keys(currentCellData[type]);
         ids.forEach(function (id) {
           var state = currentCellData[type][id];
-          var targetCellIndex = channelGrid.getCellIndex(state);
-          if (targetCellIndex == cellIndex) {
-            statesList.push(state);
-          }
+          statesList.push(state);
         });
       });
     });
     // External channel which clients can subscribe to.
     // It will publish to multiple channels based on each state's
     // (x, y) coordinates.
-    channelGrid.publish('cell-data', statesList);
+    if (statesList.length) {
+      channelGrid.publish('cell-data', statesList);
+    }
   }, WORLD_UPDATE_INTERVAL);
 
 
