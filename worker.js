@@ -77,6 +77,10 @@ module.exports.run = function (worker) {
 
   // We use a codec for SC to compress messages between clients and the server
   // to a lightweight binary format to reduce bandwidth consumption.
+  // We should probably make our own codec (on top of scCodecMinBin) to compress
+  // world-specific entities. For example, instead of emitting the JSON:
+  // {id: '...', width: 200, height: 200, color: 1000}
+  // We could compress it down to something like: {id: '...', w: 200, h: 200, c: 1000}
   worker.scServer.setCodecEngine(scCodecMinBin);
 
   var environment = worker.options.environment;
