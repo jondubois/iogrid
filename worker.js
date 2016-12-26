@@ -15,14 +15,14 @@ var CellController = require('./cell');
 
 // Having a large world is more efficient. You can divide it up into cells
 // to split up the workload between multiple CPU cores.
-var WORLD_WIDTH = 1000;
-var WORLD_HEIGHT = 1000;
+var WORLD_WIDTH = 2000;
+var WORLD_HEIGHT = 2000;
 
 // Dividing the world into vertical or horizontal strips (instead of cells)
 // is more efficient. Using few large cells is much more efficient than using
 // many small ones. Try to use as few as possible - Once cell per worker/CPU core is ideal.
-var WORLD_CELL_WIDTH = 500;
-var WORLD_CELL_HEIGHT = 1000;
+var WORLD_CELL_WIDTH = 1000;
+var WORLD_CELL_HEIGHT = 2000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
 var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
@@ -34,7 +34,7 @@ var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
   are in different cells. A smaller distance is more efficient.
 */
 var WORLD_CELL_OVERLAP_DISTANCE = 150;
-var WORLD_UPDATE_INTERVAL = 40
+var WORLD_UPDATE_INTERVAL = 40;
 
 var PLAYER_MOVE_SPEED = 10;
 var PLAYER_DIAMETER = 120;
@@ -42,7 +42,7 @@ var PLAYER_MASS = 20;
 
 // Note that the number of bots needs to be either 0 or a multiple of the number of
 // worker processes or else it will get rounded up/down.
-var BOT_COUNT = 0;
+var BOT_COUNT = 4;
 var BOT_MOVE_SPEED = 10;
 var BOT_MASS = 10;
 var BOT_DIAMETER = 100;
@@ -51,7 +51,7 @@ var BOT_CHANGE_DIRECTION_PROBABILITY = 0.01;
 var COIN_UPDATE_INTERVAL = 1000;
 var COIN_DROP_INTERVAL = 1000;
 var COIN_RADIUS = 12;
-var COIN_MAX_COUNT = 0;
+var COIN_MAX_COUNT = 100;
 var COIN_PLAYER_NO_DROP_RADIUS = 100;
 
 var CHANNEL_INBOUND_CELL_PROCESSING = 'internal/cell-processing-inbound';
