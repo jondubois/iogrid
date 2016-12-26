@@ -5,6 +5,7 @@ var BOT_DEFAULT_DIAMETER = 80;
 var BOT_DEFAULT_SPEED = 1;
 var BOT_DEFAULT_MASS = 10;
 var BOT_DEFAULT_CHANGE_DIRECTION_PROBABILITY = 0.01;
+var BOT_DEFAULT_COLOR = 1000;
 
 var BotManager = function (options) {
   this.serverWorkerId = options.serverWorkerId;
@@ -13,6 +14,7 @@ var BotManager = function (options) {
   this.botDiameter = options.botDiameter || BOT_DEFAULT_DIAMETER;
   this.botMoveSpeed = options.botMoveSpeed || BOT_DEFAULT_SPEED;
   this.botMass = options.botMass || BOT_DEFAULT_MASS;
+  this.botColor = options.botColor || BOT_DEFAULT_COLOR;
   this.botChangeDirectionProbability = options.botChangeDirectionProbability || BOT_DEFAULT_CHANGE_DIRECTION_PROBABILITY;
 
   this.stateManager = options.stateManager;
@@ -50,7 +52,7 @@ BotManager.prototype.addBot = function (options) {
     subtype: 'bot',
     swid: this.serverWorkerId,
     name: options.name || 'bot-' + Math.round(Math.random() * 10000),
-    color: options.color || 1000,
+    color: options.color || this.botColor,
     score: options.score || 0,
     speed: options.speed || this.botMoveSpeed,
     mass: options.mass || this.botMass,

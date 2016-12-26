@@ -4,6 +4,8 @@ if (typeof module == 'undefined') {
   };
 }
 
+var DEFAULT_LINE_OF_SIGHT = 1000;
+
 var ChannelGrid = function (options) {
   this.worldWidth = options.worldWidth;
   this.worldHeight = options.worldHeight;
@@ -15,6 +17,7 @@ var ChannelGrid = function (options) {
   this.cellHeight = this.worldHeight / this.rows;
 
   this.exchange = options.exchange;
+  this.watchingCells = {};
 };
 
 ChannelGrid.prototype._generateEmptyGrid = function (rows, cols) {
@@ -211,6 +214,47 @@ ChannelGrid.prototype.unwatchCell = function (channelName, col, row, watcher) {
   channel.unwatch(watcher);
   channel.unsubscribe();
   channel.destroy();
+};
+
+ChannelGrid.prototype.updateCellWatchers = function (state, channelName, options, handler) {
+  if (!this.watchingCells[channelName]) {
+    this.watchingCells[channelName] = {};
+  }
+  var lineOfSight = options.lineOfSight || DEFAULT_LINE_OF_SIGHT;
+  var watchMap = this.watchingCells[channelName];
+  var sightArea = {
+    minX: state.x - lineOfSight,
+    minY: state.y - lineOfSight,
+    maxX: state.x + lineOfSight,
+    maxY: state.y + lineOfSight
+  };
+  var minCol = Math.max(Math.floor(sightArea.minX / this.cellWidth), 0);
+  var maxCol = Math.min(Math.floor(sightArea.maxX / this.cellWidth), this.cols - 1);
+  var minRow = Math.max(Math.floor(sightArea.minY / this.cellHeight), 0);
+  var maxRow = Math.min(Math.floor(sightArea.maxY / this.cellHeight), this.rows - 1);
+
+  var matchedCells = {};
+
+  for (var r = minRow; r <= maxRow; r++) {
+    for (var c = minCol; c <= maxCol; c++) {
+      var colRowKey = c + ',' + r;
+      matchedCells[colRowKey] = {col: c, row: r};
+      if (!watchMap[colRowKey]) {
+        watchMap[colRowKey] = {col: c, row: r};
+        this.watchCell(channelName, c, r, handler);
+      }
+    }
+  }
+
+  for (var i in watchMap) {
+    if (watchMap.hasOwnProperty(i)) {
+      if (!matchedCells[i]) {
+        var coords = watchMap[i];
+        this.unwatchCell(channelName, coords.col, coords.row, handler);
+        delete watchMap[i];
+      }
+    }
+  }
 };
 
 module.exports.ChannelGrid = ChannelGrid;

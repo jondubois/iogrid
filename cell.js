@@ -1,11 +1,9 @@
 /*
-  Note that the main run() loop will be executed every time a new set of state data needs to be processed
-  by our cell controller.
-  Because this system is distributed, you cannot know the frequency and ordering of data updates.
-  The run() function will be executed based on system demand.
+  Note that the main run() loop will be executed once per frame as specified by WORLD_UPDATE_INTERVAL in worker.js.
   Behind the scenes, the engine just keeps on building up a cellData tree of all different
   state objects that are present within our current grid cell.
   The tree is a simple JSON object and needs to be in the format:
+
     {
       player: {
         // ...
@@ -24,10 +22,18 @@
         }
       }
     }
+
   You can add new type structures, new properties and new items to the cellData
   as you like. So long as you follow the structure above, the items should show
   up on the front end in the relevant cell in our world (see the handleCellData function in index.html).
   See how CoinManager was implemented for details of how to add items within the cell.
+
+  Note that states which are close to our current cell (based on WORLD_CELL_OVERLAP_DISTANCE)
+  but not exactly inside it will still be visible within this cell (they will have an additional
+  'external' property set to true).
+
+  External states should not be modified unless they are grouped together with an internal state.
+  See the groupWith() function near the bottom of this file for details.
 */
 
 var rbush = require('rbush');
@@ -41,6 +47,7 @@ var STALE_TIMEOUT = 1000;
 
 var CellController = function (options) {
   this.options = options;
+  this.cellIndex = options.cellIndex;
   this.coinManager = new CoinManager({
     cellData: options.cellData,
     cellBounds: options.cellBounds,
@@ -50,19 +57,27 @@ var CellController = function (options) {
     coinRadius: options.coinRadius
   });
   this.lastCoinDrop = 0;
-  this.lastBotMove = 0;
   this.botMoves = [
     {u: 1},
     {d: 1},
     {r: 1},
     {l: 1}
   ];
+  this.playerCompareFn = function (a, b) {
+    if (a.id < b.id) {
+      return -1;
+    }
+    if (a.id > b.id) {
+      return 1;
+    }
+    return 0;
+  };
 };
 
 /*
   The main run loop for our cell controller.
 */
-CellController.prototype.run = function (cellData, done) {
+CellController.prototype.run = function (cellData) {
   if (!cellData.player) {
     cellData.player = {};
   }
@@ -72,13 +87,14 @@ CellController.prototype.run = function (cellData, done) {
   var players = cellData.player;
   var coins = cellData.coin;
 
-  this.removeStalePlayers(players);
-  this.findPlayerOverlaps(players, coins);
-  this.dropCoins(coins);
-  this.generateBotOps(players);
-  this.applyPlayerOps(players, coins);
+  // Sorting is important to achieve consistency across cells.
+  var playerIds = Object.keys(players).sort(this.playerCompareFn);
 
-  done();
+  this.findPlayerOverlaps(playerIds, players, coins);
+  this.dropCoins(coins);
+  this.generateBotOps(playerIds, players);
+  this.applyPlayerOps(playerIds, players, coins);
+  this.removeStalePlayers(playerIds, players);
 };
 
 CellController.prototype.dropCoins = function (coins) {
@@ -96,89 +112,81 @@ CellController.prototype.dropCoins = function (coins) {
   }
 };
 
-CellController.prototype.generateBotOps = function (players, coins) {
+CellController.prototype.generateBotOps = function (playerIds, players, coins) {
   var self = this;
-  var now = Date.now();
 
-  if (now - self.lastBotMove >= self.options.worldUpdateInterval) {
-    self.lastBotMove = now;
-    Object.keys(players).forEach(function (playerId) {
-      var player = players[playerId];
-      if (player.subtype == 'bot') {
-        var radius = Math.round(player.width / 2)
-        var isBotOnEdge = player.x <= radius || player.x >= self.options.worldWidth - radius ||
-          player.y <= radius || player.y >= self.options.worldHeight - radius;
+  playerIds.forEach(function (playerId) {
+    var player = players[playerId];
+    // States which are external are managed by a different cell, therefore changes made to these
+    // states are not saved unless they are grouped with one or more internal states from the current cell.
+    // See groupWith() method near the bottom of this file foe details.
+    if (player.subtype == 'bot' && !player.external) {
+      var radius = Math.round(player.width / 2);
+      var isBotOnEdge = player.x <= radius || player.x >= self.options.worldWidth - radius ||
+        player.y <= radius || player.y >= self.options.worldHeight - radius;
 
-        if (Math.random() <= player.changeDirProb || isBotOnEdge) {
-          var randIndex = Math.floor(Math.random() * 4);
-          player.repeatOp = self.botMoves[randIndex];
-        }
-        if (player.repeatOp) {
-          player.op = player.repeatOp;
-        }
+      if (Math.random() <= player.changeDirProb || isBotOnEdge) {
+        var randIndex = Math.floor(Math.random() * self.botMoves.length);
+        player.repeatOp = self.botMoves[randIndex];
       }
-    });
-  }
+      if (player.repeatOp) {
+        player.op = player.repeatOp;
+      }
+    }
+  });
 };
 
-CellController.prototype.applyPlayerOps = function (players, coins) {
+CellController.prototype.applyPlayerOps = function (playerIds, players, coins) {
   var self = this;
 
-  var playerIds = Object.keys(players);
   playerIds.forEach(function (playerId) {
     var player = players[playerId];
 
-    // The isFresh property tells us whether or not this
-    // state was updated in this iteration of the cell controller.
-    // If it hasn't been updated in this iteration, then we don't need
-    // to process it again.
-    if (player.isFresh) {
-      var playerOp = player.op;
-      var moveSpeed;
-      if (player.subtype == 'bot') {
-        moveSpeed = player.speed;
-      } else {
-        moveSpeed = self.options.playerMoveSpeed;
+    var playerOp = player.op;
+    var moveSpeed;
+    if (player.subtype == 'bot') {
+      moveSpeed = player.speed;
+    } else {
+      moveSpeed = self.options.playerMoveSpeed;
+    }
+
+    if (playerOp) {
+      var movementVector = {x: 0, y: 0};
+
+      if (playerOp.u) {
+        movementVector.y = -moveSpeed;
+      }
+      if (playerOp.d) {
+        movementVector.y = moveSpeed;
+      }
+      if (playerOp.r) {
+        movementVector.x = moveSpeed;
+      }
+      if (playerOp.l) {
+        movementVector.x = -moveSpeed;
       }
 
-      if (playerOp) {
-        var movementVector = {x: 0, y: 0};
+      player.x += movementVector.x;
+      player.y += movementVector.y;
+    }
 
-        if (playerOp.u) {
-          movementVector.y = -moveSpeed;
-        }
-        if (playerOp.d) {
-          movementVector.y = moveSpeed;
-        }
-        if (playerOp.r) {
-          movementVector.x = moveSpeed;
-        }
-        if (playerOp.l) {
-          movementVector.x = -moveSpeed;
-        }
+    var halfWidth = Math.round(player.width / 2);
+    var halfHeight = Math.round(player.height / 2);
 
-        player.x += movementVector.x;
-        player.y += movementVector.y;
-      }
+    var leftX = player.x - halfWidth;
+    var rightX = player.x + halfWidth;
+    var topY = player.y - halfHeight;
+    var bottomY = player.y + halfHeight;
 
-      var halfWidth = Math.round(player.width / 2);
-      var halfHeight = Math.round(player.height / 2);
-
-      var leftX = player.x - halfWidth;
-      var rightX = player.x + halfWidth;
-      var topY = player.y - halfHeight;
-      var bottomY = player.y + halfHeight;
-
-      if (leftX < 0) {
-        player.x = halfWidth;
-      } else if (rightX > self.options.worldWidth) {
-        player.x = self.options.worldWidth - halfWidth;
-      }
-      if (topY < 0) {
-        player.y = halfHeight;
-      } else if (bottomY > self.options.worldHeight) {
-        player.y = self.options.worldHeight - halfHeight;
-      }
+    if (leftX < 0) {
+      player.x = halfWidth;
+    } else if (rightX > self.options.worldWidth) {
+      player.x = self.options.worldWidth - halfWidth;
+    }
+    if (topY < 0) {
+      player.y = halfHeight;
+    } else if (bottomY > self.options.worldHeight) {
+      player.y = self.options.worldHeight - halfHeight;
     }
 
     if (player.playerOverlaps) {
@@ -192,7 +200,9 @@ CellController.prototype.applyPlayerOps = function (players, coins) {
       player.coinOverlaps.forEach(function (coin) {
         if (self.testCircleCollision(player, coin).collided) {
           player.score += coin.v;
-          delete coins[coin.id];
+          // This will tell the engine to delete the coin
+          // and will notify clients.
+          coin.delete = 1;
         }
       });
       delete player.coinOverlaps;
@@ -200,20 +210,20 @@ CellController.prototype.applyPlayerOps = function (players, coins) {
   });
 };
 
-CellController.prototype.removeStalePlayers = function (players) {
-  var playerIds = Object.keys(players);
+CellController.prototype.removeStalePlayers = function (playerIds, players) {
   playerIds.forEach(function (playerId) {
     var player = players[playerId];
+    // The 'processed' property tells us the last time that the state was processed
+    // by this cell.
     if (player.delete || Date.now() - player.processed > STALE_TIMEOUT) {
       delete players[playerId];
     }
   });
 };
 
-CellController.prototype.findPlayerOverlaps = function (players, coins) {
+CellController.prototype.findPlayerOverlaps = function (playerIds, players, coins) {
   var self = this;
 
-  var playerIds = Object.keys(players);
   var playerTree = new rbush();
   var hitAreaList = [];
 
@@ -298,11 +308,20 @@ CellController.prototype.resolvePlayerCollision = function (player, otherPlayer)
     var totalMass = player.mass + otherPlayer.mass;
     var playerBuff = player.mass / totalMass;
     var otherPlayerBuff = otherPlayer.mass / totalMass;
-
     player.x -= olv.x * otherPlayerBuff;
     player.y -= olv.y * otherPlayerBuff;
     otherPlayer.x += olv.x * playerBuff;
     otherPlayer.y += olv.y * playerBuff;
+
+    /*
+      Whenever we have one state affecting the (x, y) coordinates of
+      another state, we should group them together using the groupWith() method.
+      Otherwise we will may get flicker when the two states interact across
+      a cell boundary.
+      In this case, if we don't use groupWith(), there will be flickering when you
+      try to push another player across to a different cell.
+    */
+    player.groupWith(otherPlayer);
   }
 };
 

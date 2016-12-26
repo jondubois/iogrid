@@ -5,6 +5,7 @@
   "dependencies": {
     "connect": "3.0.1",
     "express": "4.13.1",
+    "lodash": "4.17.3",
     "minimist": "1.1.0",
     "morgan": "1.7.0",
     "rbush": "2.0.1",

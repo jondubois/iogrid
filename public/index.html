@@ -47,13 +47,13 @@
         var WORLD_CELL_WIDTH;
         var WORLD_CELL_HEIGHT;
         var PLAYER_LINE_OF_SIGHT = 900;
-        var USER_INACTIVITY_TIMEOUT = 1000;
+        var PLAYER_INACTIVITY_TIMEOUT = 700;
         var USER_INPUT_INTERVAL = 40;
-        var COIN_INACTIVITY_TIMEOUT = 100;
+        var COIN_INACTIVITY_TIMEOUT = 2200;
         var ENVIRONMENT;
         var SERVER_WORKER_ID;
 
-        // 1 means no smoothing. 0.1 is relatively smooth.
+        // 1 means no smoothing. 0.1 is quite smooth.
         var CAMERA_SMOOTHING = 1;
         var BACKGROUND_TEXTURE = 'img/background-texture.png';
 
@@ -107,7 +107,11 @@
             if (state.type == 'player') {
               updateUser(state);
             } else if (state.type == 'coin') {
-              renderCoin(state);
+              if (state.delete) {
+                removeCoin(state);
+              } else {
+                renderCoin(state);
+              }
             }
           });
           bringPlayerToTop();
@@ -121,43 +125,10 @@
           As the player moves around the game world, we need to keep updating the cell subscriptions.
         */
         function updateCellWatchers(playerData, channelName, handler) {
-          if (!watchingCells[channelName]) {
-            watchingCells[channelName] = {};
-          }
-          var watchMap = watchingCells[channelName];
-          var sightArea = {
-            minX: playerData.x - PLAYER_LINE_OF_SIGHT,
-            minY: playerData.y - PLAYER_LINE_OF_SIGHT,
-            maxX: playerData.x + PLAYER_LINE_OF_SIGHT,
-            maxY: playerData.y + PLAYER_LINE_OF_SIGHT
+          var options = {
+            lineOfSight: PLAYER_LINE_OF_SIGHT
           };
-          var minCol = Math.max(Math.floor(sightArea.minX / WORLD_CELL_WIDTH), 0);
-          var maxCol = Math.min(Math.floor(sightArea.maxX / WORLD_CELL_WIDTH), WORLD_COLS - 1);
-          var minRow = Math.max(Math.floor(sightArea.minY / WORLD_CELL_HEIGHT), 0);
-          var maxRow = Math.min(Math.floor(sightArea.maxY / WORLD_CELL_HEIGHT), WORLD_ROWS - 1);
-
-          var matchedCells = {};
-
-          for (var r = minRow; r <= maxRow; r++) {
-            for (var c = minCol; c <= maxCol; c++) {
-              var colRowKey = c + ',' + r;
-              matchedCells[colRowKey] = {col: c, row: r};
-              if (!watchMap[colRowKey]) {
-                watchMap[colRowKey] = {col: c, row: r};
-                channelGrid.watchCell(channelName, c, r, handler);
-              }
-            }
-          }
-
-          for (var i in watchMap) {
-            if (watchMap.hasOwnProperty(i)) {
-              if (!matchedCells[i]) {
-                var coords = watchMap[i];
-                channelGrid.unwatchCell(channelName, coords.col, coords.row, handler);
-                delete watchMap[i];
-              }
-            }
-          }
+          channelGrid.updateCellWatchers(playerData, channelName, options, handler);
         }
 
         function updateUserGraphics(user) {
@@ -277,13 +248,6 @@
             });
             coin.sprite.x = coinData.x;
             coin.sprite.y = coinData.y;
-            coin.hitArea = {
-              minX: coinData.x - coinData.r,
-              minY: coinData.y - coinData.r,
-              maxX: coinData.x + coinData.r,
-              maxY: coinData.y + coinData.r,
-              id: coinData.id
-            };
             coin.clientProcessed = Date.now();
           }
         }
@@ -364,7 +328,7 @@
           for (var i in users) {
             if (users.hasOwnProperty(i)) {
               var curUser = users[i];
-              if (now - curUser.clientProcessed > USER_INACTIVITY_TIMEOUT) {
+              if (now - curUser.clientProcessed > PLAYER_INACTIVITY_TIMEOUT) {
                 removeUser(curUser);
               }
             }

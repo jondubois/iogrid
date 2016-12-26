@@ -75,6 +75,7 @@ CoinManager.prototype.addCoin = function (value, radius) {
       y: validPosition.y
     };
     this.coins[coinId] = coin;
+    this.coinCount++;
     return coin;
   }
   return null;
