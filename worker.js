@@ -220,13 +220,25 @@ module.exports.run = function (worker) {
             }
             statesForNearbyCells[nearbyCellIndex].push(state);
           }
+
         });
       }
+
       var stateOwnerCellIndex = channelGrid.getCellIndex(state);
       var hasChangedOwnerCells = (state.clid != stateOwnerCellIndex);
 
       state.clid = stateOwnerCellIndex;
-      if (hasChangedOwnerCells && swid) {
+
+      var oldCcids = state.ccids;
+      state.ccids = [];
+      nearbyCellIndexes.forEach(function (nearbyCellIndex) {
+        if (nearbyCellIndex != state.clid) {
+          state.ccids.push(nearbyCellIndex);
+        }
+      });
+      var haveCloseCellsChanged = (JSON.stringify(state.ccids) != JSON.stringify(oldCcids));
+
+      if ((hasChangedOwnerCells || haveCloseCellsChanged) && swid) {
         if (!workerStateRefList[swid]) {
           workerStateRefList[swid] = [];
         }
@@ -234,8 +246,14 @@ module.exports.run = function (worker) {
           id: state.id,
           swid: state.swid,
           clid: state.clid,
+          ccids: state.ccids,
           type: state.type
         };
+
+        if (!state.ccids.length) {
+          delete state.ccids;
+          delete stateRef.ccids;
+        }
         if (state.delete) {
           stateRef.delete = state.delete;
         }
@@ -371,11 +389,20 @@ module.exports.run = function (worker) {
       stateList.push(state);
     });
 
-    // Publish to internal channel for processing (e.g. Collision
+    // Publish to internal channels for processing (e.g. Collision
     // detection and resolution, scoring, etc...)
-    // These states will be processed by various cell controllers depending
+    // These states will be processed by a cell controllers depending
     // on each state's cell index (clid) within the world grid.
-    channelGrid.publish(CHANNEL_INBOUND_CELL_PROCESSING, stateList, {useClid: true});
+    var gridPublishOptions = {
+      cellIndexesFactory: function (state) {
+        var cellIds = [state.clid];
+        if (state.ccids) {
+          cellIds = cellIds.concat(state.ccids);
+        }
+        return cellIds;
+      }
+    };
+    channelGrid.publish(CHANNEL_INBOUND_CELL_PROCESSING, stateList, gridPublishOptions);
 
     stateList.forEach(function (state) {
       if (state.op) {

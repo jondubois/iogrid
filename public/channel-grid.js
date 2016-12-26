@@ -153,8 +153,12 @@ ChannelGrid.prototype.publish = function (channelName, objects, options) {
 
   objects.forEach(function (obj) {
     var affectedCells;
-    if (options.useClid) {
-      affectedCells = [self.convertCellIndexToCoordinates(obj.clid)];
+    if (options.cellIndexesFactory) {
+      var affectedCells = [];
+      var cellIndexes = options.cellIndexesFactory(obj);
+      cellIndexes.forEach(function (index) {
+        affectedCells.push(self.convertCellIndexToCoordinates(index));
+      });
     } else if (options.includeNearbyCells) {
       affectedCells = self.getAllCellCoordinates(obj);
     } else {
