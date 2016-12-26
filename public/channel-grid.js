@@ -125,7 +125,7 @@ ChannelGrid.prototype.getAllCellIndexes = function (object) {
 };
 
 ChannelGrid.prototype._getGridChannelName = function (channelName, col, row) {
-  return 'cell(' + col + ',' + row + ')' + channelName;
+  return '(' + col + ',' + row + ')' + channelName;
 };
 
 

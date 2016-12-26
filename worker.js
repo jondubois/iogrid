@@ -21,7 +21,7 @@ var WORLD_HEIGHT = 2000;
 // Dividing the world into vertical or horizontal strips (instead of cells)
 // is more efficient. Using few large cells is much more efficient than using
 // many small ones. Try to use as few as possible - Once cell per worker/CPU core is ideal.
-var WORLD_CELL_WIDTH = 1000;
+var WORLD_CELL_WIDTH = 500;
 var WORLD_CELL_HEIGHT = 2000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
@@ -33,10 +33,10 @@ var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
   It represents the maximum distance that they can be from one another if they
   are in different cells. A smaller distance is more efficient.
 */
-var WORLD_CELL_OVERLAP_DISTANCE = 150;
-var WORLD_UPDATE_INTERVAL = 40;
+var WORLD_CELL_OVERLAP_DISTANCE = 130;
+var WORLD_UPDATE_INTERVAL = 50;
 
-var PLAYER_MOVE_SPEED = 10;
+var PLAYER_MOVE_SPEED = 15;
 var PLAYER_DIAMETER = 120;
 var PLAYER_MASS = 20;
 
@@ -51,8 +51,8 @@ var BOT_CHANGE_DIRECTION_PROBABILITY = 0.01;
 var COIN_UPDATE_INTERVAL = 1000;
 var COIN_DROP_INTERVAL = 1000;
 var COIN_RADIUS = 12;
-var COIN_MAX_COUNT = 100;
-var COIN_PLAYER_NO_DROP_RADIUS = 100;
+var COIN_MAX_COUNT = 0;
+var COIN_PLAYER_NO_DROP_RADIUS = 80;
 
 var CHANNEL_INBOUND_CELL_PROCESSING = 'internal/cell-processing-inbound';
 var CHANNEL_CELL_TRANSITION = 'internal/cell-transition';
@@ -209,6 +209,8 @@ module.exports.run = function (worker) {
       if (state.isFresh) {
         delete state.isFresh;
       }
+      state.x = Math.round(state.x);
+      state.y = Math.round(state.y);
 
       var nearbyCellIndexes = channelGrid.getAllCellIndexes(state);
 
@@ -220,7 +222,6 @@ module.exports.run = function (worker) {
             }
             statesForNearbyCells[nearbyCellIndex].push(state);
           }
-
         });
       }
 
@@ -229,7 +230,7 @@ module.exports.run = function (worker) {
 
       state.clid = stateOwnerCellIndex;
 
-      var oldCcids = state.ccids;
+      var oldCcids = state.ccids || [];
       state.ccids = [];
       nearbyCellIndexes.forEach(function (nearbyCellIndex) {
         if (nearbyCellIndex != state.clid) {
@@ -362,11 +363,32 @@ module.exports.run = function (worker) {
         });
       });
     });
+
+    var dontSendProps = {
+      ccids: true,
+      clid: true,
+      mass: true,
+      speed: true,
+      changeDirProb: true,
+      repeatOp: true,
+      swid: true,
+      processed: true
+    };
+    var simplifiedStateList = [];
+    statesList.forEach(function (state) {
+      var clone = {};
+      Object.keys(state).forEach(function (key) {
+        if (!dontSendProps[key]) {
+          clone[key] = state[key];
+        }
+      });
+      simplifiedStateList.push(clone);
+    });
     // External channel which clients can subscribe to.
     // It will publish to multiple channels based on each state's
     // (x, y) coordinates.
     if (statesList.length) {
-      channelGrid.publish('cell-data', statesList);
+      channelGrid.publish('cell-data', simplifiedStateList);
     }
   }, WORLD_UPDATE_INTERVAL);
 

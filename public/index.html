@@ -46,8 +46,9 @@
         var WORLD_ROWS;
         var WORLD_CELL_WIDTH;
         var WORLD_CELL_HEIGHT;
-        var PLAYER_LINE_OF_SIGHT = 1000;
+        var PLAYER_LINE_OF_SIGHT = 900;
         var USER_INACTIVITY_TIMEOUT = 1000;
+        var USER_INPUT_INTERVAL = 40;
         var COIN_INACTIVITY_TIMEOUT = 100;
         var ENVIRONMENT;
         var SERVER_WORKER_ID;
@@ -159,44 +160,6 @@
           }
         }
 
-        // function reportApproxCoinCollisionsToServer(user) {
-        //   // We account for double the area to account for server latency
-        //   var collisionHalfWidth = user.width;
-        //   var collisionHalfHeight = user.height;
-        //
-        //   var coinNodesHits = coinTree.search({
-        //     minX: user.x - collisionHalfWidth,
-        //     minY: user.y - collisionHalfHeight,
-        //     maxX: user.x + collisionHalfWidth,
-        //     maxY: user.y + collisionHalfHeight
-        //   });
-        //
-        //   var coinsHitList = [];
-        //
-        //   coinNodesHits.forEach(function (coinNode) {
-        //     var curCoin = coins[coinNode.id];
-        //     if (curCoin) {
-        //       coinsHitList.push({
-        //         id: curCoin.id,
-        //         swid: curCoin.swid,
-        //         x: curCoin.x,
-        //         y: curCoin.y,
-        //         r: curCoin.r
-        //       });
-        //     }
-        //   });
-        //   if (coinsHitList.length) {
-        //     socket.publish('external/coin-hit-check/' + SERVER_WORKER_ID, {
-        //       userId: user.id,
-        //       coins: coinsHitList
-        //     });
-        //   }
-        // }
-
-        // function removeTakenCoins(coinStates) {
-        //   coinStates.forEach(removeCoin);
-        // }
-
         function updateUserGraphics(user) {
           user.sprite.x = user.x;
           user.sprite.y = user.y;
@@ -220,10 +183,7 @@
           user.clientProcessed = Date.now();
 
           if (user.id == playerId) {
-            // reportApproxCoinCollisionsToServer(user);
             updateCellWatchers(user, 'cell-data', handleCellData);
-            // updateCellWatchers(user, 'coin-states', renderCoins);
-            // updateCellWatchers(user, 'coins-taken', removeTakenCoins);
           }
         }
 
@@ -256,7 +216,6 @@
           user.id = userData.id;
           user.swid = userData.swid;
           user.name = userData.name;
-          user.serverProcessed = userData.processed;
 
           var textStyle = {
             font: '16px Arial',
@@ -291,12 +250,8 @@
         function updateUser(userData) {
           var user = users[userData.id];
           if (user) {
-            // console.log(222, userData.processed);
-            // if (userData.processed > user.serverProcessed) { // TODO
-              user.score = userData.score;
-              user.serverProcessed = userData.processed;
-              moveUser(userData.id, userData.x, userData.y);
-            // }
+            user.score = userData.score;
+            moveUser(userData.id, userData.x, userData.y);
           } else {
             createUserSprite(userData);
           }
@@ -312,7 +267,7 @@
 
         function renderCoin(coinData) {
           if (coins[coinData.id]) {
-            coins[coinData.id].processed = Date.now();
+            coins[coinData.id].clientProcessed = Date.now();
           } else {
             var coin = coinData;
             coins[coinData.id] = coin;
@@ -329,7 +284,7 @@
               maxY: coinData.y + coinData.r,
               id: coinData.id
             };
-            coin.processed = Date.now();
+            coin.clientProcessed = Date.now();
           }
         }
 
@@ -349,7 +304,6 @@
             }, function (err, playerData) {
               playerId = playerData.id;
               updateCellWatchers(playerData, 'cell-data', handleCellData);
-              // updateCellWatchers(playerData, 'coin-states', renderCoins);
             });
           }
 
@@ -368,6 +322,8 @@
           socket.on('connect', joinWorld);
           socket.on('disconnect', removeAllUserSprites);
         }
+
+        var lastActionTime = 0;
 
         function update() {
           var didAction = false;
@@ -388,7 +344,8 @@
             playerOp.l = 1;
             didAction = true;
           }
-          if (didAction) {
+          if (didAction && Date.now() - lastActionTime >= USER_INPUT_INTERVAL) {
+            lastActionTime = Date.now();
             // Send the player operations for the server to process.
             socket.emit('action', playerOp);
           }
@@ -416,7 +373,7 @@
           for (var j in coins) {
             if (coins.hasOwnProperty(j)) {
               var curCoin = coins[j];
-              if (now - curCoin.processed > COIN_INACTIVITY_TIMEOUT) {
+              if (now - curCoin.clientProcessed > COIN_INACTIVITY_TIMEOUT) {
                 removeCoin(curCoin);
               }
             }
