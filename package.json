@@ -1,7 +1,7 @@
 {
   "name": "sc-phaser-sample-game",
   "description": "A simple demo built using SocketCluster and Phaser",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "dependencies": {
     "connect": "3.0.1",
     "express": "4.13.1",

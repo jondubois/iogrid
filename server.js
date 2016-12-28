@@ -29,7 +29,7 @@ var options = {
   // If using nodemon, set this to true, and make sure that environment is 'dev'.
   killMasterOnSignal: false,
   instanceId: 'realm-1',
-  pubSubBatchDuration: null, // TODO
+  pubSubBatchDuration: null,
   environment: environment
 };
 
