@@ -38,7 +38,7 @@ var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
   between multiple cells.
 */
 var WORLD_CELL_OVERLAP_DISTANCE = 110;
-var WORLD_UPDATE_INTERVAL = 50;
+var WORLD_UPDATE_INTERVAL = 20;
 
 // Delete states which have gone stale (not being updated anymore).
 var WORLD_STALE_TIMEOUT = 1000;
@@ -49,18 +49,18 @@ var SPECIAL_UPDATE_INTERVALS = {
   1000: ['coin']
 };
 
-var PLAYER_MOVE_SPEED = 17;
+var PLAYER_MOVE_SPEED = 15;
 var PLAYER_DIAMETER = 100;
 var PLAYER_MASS = 20;
 
 // Note that the number of bots needs to be either 0 or a multiple of the number of
 // worker processes or else it will get rounded up/down.
 var BOT_COUNT = 4;
-var BOT_MOVE_SPEED = 10;
+var BOT_MOVE_SPEED = 5;
 var BOT_MASS = 10;
 var BOT_COLOR = 1000;
 var BOT_DIAMETER = 100;
-var BOT_CHANGE_DIRECTION_PROBABILITY = 0.1;
+var BOT_CHANGE_DIRECTION_PROBABILITY = 0.01;
 
 var COIN_UPDATE_INTERVAL = 1000;
 var COIN_DROP_INTERVAL = 500;
