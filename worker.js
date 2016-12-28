@@ -16,13 +16,13 @@ var CellController = require('./cell');
 
 // Having a large world is more efficient. You can divide it up into cells
 // to split up the workload between multiple CPU cores.
-var WORLD_WIDTH = 4000;
-var WORLD_HEIGHT = 4000;
+var WORLD_WIDTH = 2000;
+var WORLD_HEIGHT = 2000;
 
 // Dividing the world into vertical or horizontal strips (instead of cells)
 // is more efficient.
-var WORLD_CELL_WIDTH = 1000;
-var WORLD_CELL_HEIGHT = 4000;
+var WORLD_CELL_WIDTH = 500;
+var WORLD_CELL_HEIGHT = 2000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
 var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
@@ -49,13 +49,13 @@ var SPECIAL_UPDATE_INTERVALS = {
   1000: ['coin']
 };
 
-var PLAYER_MOVE_SPEED = 15;
+var PLAYER_MOVE_SPEED = 10;
 var PLAYER_DIAMETER = 100;
 var PLAYER_MASS = 20;
 
 // Note that the number of bots needs to be either 0 or a multiple of the number of
 // worker processes or else it will get rounded up/down.
-var BOT_COUNT = 4;
+var BOT_COUNT = 30;
 var BOT_MOVE_SPEED = 5;
 var BOT_MASS = 10;
 var BOT_COLOR = 1000;
