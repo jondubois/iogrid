@@ -69,7 +69,8 @@ var COIN_MAX_COUNT = 200;
 var COIN_PLAYER_NO_DROP_RADIUS = 80;
 
 var privateProps = {
-  clid: true,
+  ccid: true,
+  tcid: true,
   mass: true,
   speed: true,
   changeDirProb: true,
@@ -99,6 +100,7 @@ var OUTBOUND_STATE_TRANSFORMERS = {
 
 var CHANNEL_INBOUND_CELL_PROCESSING = 'internal/cell-processing-inbound';
 var CHANNEL_CELL_TRANSITION = 'internal/cell-transition';
+var CHANNEL_CELL_TRANSITION_ACK = 'internal/cell-transition-ack';
 
 var game = {
   stateRefs: {}
@@ -235,6 +237,7 @@ module.exports.run = function (worker) {
 
     channelGrid.watchCellAtIndex(CHANNEL_INBOUND_CELL_PROCESSING, cellIndex, gridCellDataHandler.bind(null, cellIndex));
     channelGrid.watchCellAtIndex(CHANNEL_CELL_TRANSITION, cellIndex, gridCellTransitionHandler.bind(null, cellIndex));
+    channelGrid.watchCellAtIndex(CHANNEL_CELL_TRANSITION_ACK, cellIndex, gridCellTransitionAckHandler.bind(null, cellIndex));
   }
 
   function applyOutboundStateTransformer(state) {
@@ -283,16 +286,21 @@ module.exports.run = function (worker) {
     return {
       type: state.type,
       x: Math.round(state.x),
-      y: Math.round(state.y),
-      processed: Date.now()
+      y: Math.round(state.y)
     };
   }
 
-  function getBestOfTwoGroups(groupA, groupB) {
-    if (groupB.processed > groupA.processed) {
-      return groupB;
-    }
-    return groupA;
+  function getGroupLeader(group) {
+    group.members.sort(function (a, b) {
+      if (a.id > b.id) {
+        return 1;
+      }
+      if (a.id < b.id) {
+        return -1;
+      }
+      return 0;
+    });
+    return group.members[0];
   }
 
   function getStateGroups() {
@@ -323,10 +331,12 @@ module.exports.run = function (worker) {
               size: 0,
               x: 0,
               y: 0,
-              processed: 0
             };
             var allGroupMembersAreAvailableToThisCell = true;
             var expectedMemberCount = groupStateIdList.length;
+
+            var cellIndexLookup = {};
+
             for (var i = 0; i < expectedMemberCount; i++) {
               var memberId = groupStateIdList[i];
               var memberPartialState = groupStateMap[memberId];
@@ -335,27 +345,26 @@ module.exports.run = function (worker) {
                 var memberStateClone = _.cloneDeep(memberState);
                 memberStateClone.x = memberPartialState.x;
                 memberStateClone.y = memberPartialState.y;
-                memberStateClone.processed = memberPartialState.processed;
                 group.members.push(memberStateClone);
                 group.size++;
                 group.x += memberStateClone.x;
                 group.y += memberStateClone.y;
-                group.processed = Math.min(group.processed, memberStateClone.processed);
+                if (!cellIndexLookup[memberState.tcid]) {
+                  cellIndexLookup[memberState.tcid] = 1;
+                }
               } else {
                 allGroupMembersAreAvailableToThisCell = false;
                 break;
               }
             }
-            if (allGroupMembersAreAvailableToThisCell) {
+            var existingGroup = currentGroupMap[groupId];
+            if (allGroupMembersAreAvailableToThisCell && !existingGroup) {
+
               group.x = Math.round(group.x / group.size);
               group.y = Math.round(group.y / group.size);
-              group.clid = channelGrid.getCellIndex(group);
-              var existingGroup = currentGroupMap[groupId];
-              if (existingGroup) {
-                currentGroupMap[groupId] = getBestOfTwoGroups(existingGroup, group);
-              } else {
-                currentGroupMap[groupId] = group;
-              }
+              var leader = getGroupLeader(group);
+              group.tcid = leader.tcid;
+              currentGroupMap[groupId] = group;
             }
           }
         });
@@ -414,10 +423,7 @@ module.exports.run = function (worker) {
       var cellDataStates = currentCellData[type] || {};
       Object.keys(cellDataStates).forEach(function (id) {
         if (currentCellExternalStates[type] && currentCellExternalStates[type][id]) {
-          // User can modify an external state if it is grouped with an internal one.
-          if (!currentCellExternalStates[type][id].groupMates) {
-            cellDataStates[id] = currentCellExternalStates[type][id];
-          }
+          cellDataStates[id] = currentCellExternalStates[type][id];
           delete currentCellExternalStates[type][id];
         }
       });
@@ -436,6 +442,9 @@ module.exports.run = function (worker) {
         delete state.groupWith;
         delete state.ungroupFrom;
         delete state.groupMates;
+        if (state.op) {
+          delete state.op;
+        }
       });
     });
   }
@@ -495,7 +504,7 @@ module.exports.run = function (worker) {
       Object.keys(currentGroupMap).forEach(function (groupId) {
         var group = currentGroupMap[groupId];
         var memberList = group.members;
-        if (group.clid == cellIndex) {
+        if (group.tcid == cellIndex) {
           memberList.forEach(function (member) {
             transformedStateList.push(
               applyOutboundStateTransformer(member)
@@ -531,6 +540,14 @@ module.exports.run = function (worker) {
     });
   }
 
+  function updateStateExternalTag(state, cellIndex) {
+    if (state.ccid != cellIndex || state.tcid != cellIndex) {
+      state.external = true;
+    } else {
+      delete state.external;
+    }
+  }
+
   // Share states with adjacent cells when those states get near
   // other cells' boundaries and prepare for transition to other cells.
   function dispatchProcessedData(cellIndex) {
@@ -543,16 +560,14 @@ module.exports.run = function (worker) {
       var swid = state.swid;
       var type = state.type;
 
-      if (state.op) {
-        delete state.op;
-      }
+      // The target cell id
+      state.tcid = channelGrid.getCellIndex(state);
+      updateStateExternalTag(state, cellIndex);
 
-      var stateWasInThisCell = (state.clid == cellIndex);
-
-      if (stateWasInThisCell) {
+      if (state.ccid == cellIndex) {
         var nearbyCellIndexes = channelGrid.getAllCellIndexes(state);
         nearbyCellIndexes.forEach(function (nearbyCellIndex) {
-          if (nearbyCellIndex != cellIndex) {
+          if (nearbyCellIndex != state.ccid && nearbyCellIndex != state.tcid) {
             if (!statesForNearbyCells[nearbyCellIndex]) {
               statesForNearbyCells[nearbyCellIndex] = [];
             }
@@ -561,11 +576,11 @@ module.exports.run = function (worker) {
         });
       }
 
-      var stateOwnerCellIndex = channelGrid.getCellIndex(state);
-      var hasChangedOwnerCells = (state.clid != stateOwnerCellIndex);
-      state.clid = stateOwnerCellIndex;
-
-      if (hasChangedOwnerCells) {
+      if (state.ccid != state.tcid) {
+        if (!statesForNearbyCells[state.tcid]) {
+          statesForNearbyCells[state.tcid] = [];
+        }
+        statesForNearbyCells[state.tcid].push(state);
         if (swid) {
           if (!workerStateRefList[swid]) {
             workerStateRefList[swid] = [];
@@ -573,7 +588,7 @@ module.exports.run = function (worker) {
           var stateRef = {
             id: state.id,
             swid: state.swid,
-            clid: state.clid,
+            tcid: state.tcid,
             type: state.type
           };
 
@@ -584,20 +599,13 @@ module.exports.run = function (worker) {
         }
       }
 
-      if (state.clid == cellIndex) {
-        if (state.external) {
-          delete state.external;
-        }
-      } else {
-        state.external = true;
-      }
       if (state.delete) {
         if (!cellPendingDeletes[cellIndex][type]) {
           cellPendingDeletes[cellIndex][type] = {};
         }
         cellPendingDeletes[cellIndex][type][id] = state;
         delete currentCellData[type][id];
-      } else if (Date.now() - state.processed > WORLD_STALE_TIMEOUT) {
+      } else if (state.external && Date.now() - state.processed > WORLD_STALE_TIMEOUT) {
         delete currentCellData[type][id];
       }
     });
@@ -614,28 +622,67 @@ module.exports.run = function (worker) {
     });
   }
 
+  function gridCellTransitionAckHandler(cellIndex, stateList) {
+    var currentCellData = cellData[cellIndex];
+    stateList.forEach(function (state) {
+      var type = state.type;
+      var id = state.id;
+
+      if (currentCellData[type] && currentCellData[type][id]) {
+        state.processed = Date.now();
+        updateStateExternalTag(state, cellIndex);
+        currentCellData[type][id] = state;
+      }
+    });
+  }
+
   // Receive states which are in other cells and *may* transition to this cell later.
   // We don't manage these states, we just keep a copy so that they are visible
   // inside our cellController (cell.js) - This allows states to interact across
   // cell partitions (which may be hosted on a different process/CPU core).
   function gridCellTransitionHandler(cellIndex, stateList) {
     var currentCellData = cellData[cellIndex];
+    var transitionAckMap = {};
+    var newlyAcceptedStates = [];
+
     stateList.forEach(function (state) {
       var type = state.type;
-
-      if (state.clid == cellIndex) {
-        if (state.external) {
-          delete state.external;
-        }
-      } else {
-        state.external = true;
-      }
+      var id = state.id;
       state.processed = Date.now();
 
       if (!currentCellData[type]) {
         currentCellData[type] = {};
       }
-      currentCellData[type][state.id] = state;
+      var existingState = currentCellData[type][id];
+
+      if (state.tcid == cellIndex) {
+        // Previous cell id.
+        state.pcid = state.ccid;
+        // This is a full transition to our current cell.
+        state.ccid = cellIndex;
+        currentCellData[type][id] = state;
+        newlyAcceptedStates.push(state);
+      } else {
+        // This is just external state for us to track but not
+        // a complete transition, the state will still be managed by
+        // a different cell.
+        if (!existingState || existingState.external) {
+          currentCellData[type][id] = state;
+        }
+      }
+      updateStateExternalTag(state, cellIndex);
+    });
+
+    newlyAcceptedStates.forEach(function (state) {
+      var pcid = state.pcid;
+      if (!transitionAckMap[pcid]) {
+        transitionAckMap[pcid] = [];
+      }
+      delete state.pcid;
+      transitionAckMap[pcid].push(state);
+    });
+    Object.keys(transitionAckMap).forEach(function (ackCellIndex) {
+      channelGrid.publishToCells(CHANNEL_CELL_TRANSITION_ACK, transitionAckMap[ackCellIndex], [ackCellIndex]);
     });
   }
 
@@ -655,7 +702,9 @@ module.exports.run = function (worker) {
       if (!currentCellData[type][id]) {
         if (stateRef.create) {
           // If is a stateRef
-          currentCellData[type][id] = stateRef.create;
+          var state = stateRef.create;
+          state.ccid = cellIndex;
+          currentCellData[type][id] = state;
         } else if (stateRef.x != null && stateRef.y != null) {
           // If we have x and y properties, then we know that
           // this is a full state.
@@ -673,14 +722,8 @@ module.exports.run = function (worker) {
         if (stateRef.data) {
           cachedState.data = stateRef.data;
         }
-        cachedState.clid = channelGrid.getCellIndex(cachedState);
-        if (cachedState.clid == cellIndex) {
-          if (cachedState.external) {
-            delete cachedState.external;
-          }
-        } else {
-          cachedState.external = true;
-        }
+        cachedState.tcid = channelGrid.getCellIndex(cachedState);
+        updateStateExternalTag(cachedState, cellIndex);
         cachedState.processed = Date.now();
       }
     });
@@ -707,10 +750,10 @@ module.exports.run = function (worker) {
     // Publish to internal channels for processing (e.g. Collision
     // detection and resolution, scoring, etc...)
     // These states will be processed by a cell controllers depending
-    // on each state's cell index (clid) within the world grid.
+    // on each state's target cell index (tcid) within the world grid.
     var gridPublishOptions = {
       cellIndexesFactory: function (state) {
-        return [state.clid];
+        return [state.tcid];
       }
     };
     channelGrid.publish(CHANNEL_INBOUND_CELL_PROCESSING, stateList, gridPublishOptions);

@@ -8,7 +8,7 @@ StateManager.prototype.create = function (state) {
   var stateRef = {
     id: state.id,
     swid: state.swid,
-    clid: stateCellIndex, // Cell index
+    tcid: stateCellIndex, // Target cell index.
     type: state.type,
     create: state
   };

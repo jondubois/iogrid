@@ -94,7 +94,7 @@ CellController.prototype.run = function (cellData) {
   this.dropCoins(coins);
   this.generateBotOps(playerIds, players);
   this.applyPlayerOps(playerIds, players, coins);
-  this.removeStalePlayers(playerIds, players);
+  // this.removeStalePlayers(playerIds, players);
 };
 
 CellController.prototype.dropCoins = function (coins) {
