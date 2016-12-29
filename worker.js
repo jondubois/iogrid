@@ -55,8 +55,8 @@ var PLAYER_MASS = 20;
 
 // Note that the number of bots needs to be either 0 or a multiple of the number of
 // worker processes or else it will get rounded up/down.
-var BOT_COUNT = 20;
-var BOT_MOVE_SPEED = 10;
+var BOT_COUNT = 10;
+var BOT_MOVE_SPEED = 5;
 var BOT_MASS = 10;
 var BOT_COLOR = 1000;
 var BOT_DIAMETER = 100;
