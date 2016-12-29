@@ -37,7 +37,7 @@ var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
   A smaller value is more efficient. Since this overlap area requires coordination
   between multiple cells.
 */
-var WORLD_CELL_OVERLAP_DISTANCE = 110;
+var WORLD_CELL_OVERLAP_DISTANCE = 150;
 var WORLD_UPDATE_INTERVAL = 20;
 
 // Delete states which have gone stale (not being updated anymore).
@@ -55,8 +55,8 @@ var PLAYER_MASS = 20;
 
 // Note that the number of bots needs to be either 0 or a multiple of the number of
 // worker processes or else it will get rounded up/down.
-var BOT_COUNT = 30;
-var BOT_MOVE_SPEED = 5;
+var BOT_COUNT = 20;
+var BOT_MOVE_SPEED = 10;
 var BOT_MASS = 10;
 var BOT_COLOR = 1000;
 var BOT_DIAMETER = 100;
