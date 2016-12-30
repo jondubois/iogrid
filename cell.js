@@ -40,8 +40,6 @@ var rbush = require('rbush');
 var SAT = require('sat');
 var CoinManager = require('./coin-manager').CoinManager;
 
-var STALE_TIMEOUT = 1000;
-
 // This controller will be instantiated once for each
 // cell in our world grid.
 
@@ -94,7 +92,6 @@ CellController.prototype.run = function (cellData) {
   this.dropCoins(coins);
   this.generateBotOps(playerIds, players);
   this.applyPlayerOps(playerIds, players, coins);
-  // this.removeStalePlayers(playerIds, players);
 };
 
 CellController.prototype.dropCoins = function (coins) {
@@ -210,17 +207,6 @@ CellController.prototype.applyPlayerOps = function (playerIds, players, coins) {
   });
 };
 
-CellController.prototype.removeStalePlayers = function (playerIds, players) {
-  playerIds.forEach(function (playerId) {
-    var player = players[playerId];
-    // The 'processed' property tells us the last time that the state was processed
-    // by this cell.
-    if (player.delete || Date.now() - player.processed > STALE_TIMEOUT) {
-      delete players[playerId];
-    }
-  });
-};
-
 CellController.prototype.findPlayerOverlaps = function (playerIds, players, coins) {
   var self = this;
 
@@ -308,6 +294,8 @@ CellController.prototype.resolvePlayerCollision = function (player, otherPlayer)
     var totalMass = player.mass + otherPlayer.mass;
     var playerBuff = player.mass / totalMass;
     var otherPlayerBuff = otherPlayer.mass / totalMass;
+
+
     player.x -= olv.x * otherPlayerBuff;
     player.y -= olv.y * otherPlayerBuff;
     otherPlayer.x += olv.x * playerBuff;

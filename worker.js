@@ -79,7 +79,7 @@ var privateProps = {
   processed: true,
   groupWith: true,
   ungroupFrom: true,
-  groupMates: true,
+  group: true,
   external: true
 };
 
@@ -290,17 +290,10 @@ module.exports.run = function (worker) {
     };
   }
 
-  function getGroupLeader(group) {
-    group.members.sort(function (a, b) {
-      if (a.id > b.id) {
-        return 1;
-      }
-      if (a.id < b.id) {
-        return -1;
-      }
-      return 0;
-    });
-    return group.members[0];
+  function isGroupABetterThanGroupB(groupA, groupB) {
+    // If both groups are the same size, the one that has the leader
+    // with the lowest alphabetical id wins.
+    return groupA.leader.id <= groupB.leader.id;
   }
 
   function getStateGroups() {
@@ -315,55 +308,54 @@ module.exports.run = function (worker) {
         var cellDataStates = currentCellData[type] || {};
         Object.keys(cellDataStates).forEach(function (id) {
           var state = cellDataStates[id];
-          if (state.groupMates) {
-            var groupStateMap = {};
-            Object.keys(state.groupMates).forEach(function (stateId) {
-              groupStateMap[stateId] = state.groupMates[stateId];
+          if (state.group) {
+            var groupSimpleStateMap = {};
+            Object.keys(state.group).forEach(function (stateId) {
+              groupSimpleStateMap[stateId] = state.group[stateId];
             });
-            groupStateMap[state.id] = getSimplifiedState(state);
 
-            var groupStateIdList = Object.keys(groupStateMap).sort();
+            var groupStateIdList = Object.keys(groupSimpleStateMap).sort();
             var groupId = groupStateIdList.join(',');
+
+            var leaderClone = _.cloneDeep(state);
+            leaderClone.x = groupSimpleStateMap[leaderClone.id].x;
+            leaderClone.y = groupSimpleStateMap[leaderClone.id].y;
 
             var group = {
               id: groupId,
+              leader: state,
               members: [],
               size: 0,
               x: 0,
               y: 0,
             };
-            var allGroupMembersAreAvailableToThisCell = true;
             var expectedMemberCount = groupStateIdList.length;
-
-            var cellIndexLookup = {};
 
             for (var i = 0; i < expectedMemberCount; i++) {
               var memberId = groupStateIdList[i];
-              var memberPartialState = groupStateMap[memberId];
-              var memberState = currentCellData[memberPartialState.type][memberId];
+              var memberSimplifiedState = groupSimpleStateMap[memberId];
+              var memberState = currentCellData[memberSimplifiedState.type][memberId];
               if (memberState) {
                 var memberStateClone = _.cloneDeep(memberState);
-                memberStateClone.x = memberPartialState.x;
-                memberStateClone.y = memberPartialState.y;
+                memberStateClone.x = memberSimplifiedState.x;
+                memberStateClone.y = memberSimplifiedState.y;
                 group.members.push(memberStateClone);
-                group.size++;
                 group.x += memberStateClone.x;
                 group.y += memberStateClone.y;
-                if (!cellIndexLookup[memberState.tcid]) {
-                  cellIndexLookup[memberState.tcid] = 1;
-                }
-              } else {
-                allGroupMembersAreAvailableToThisCell = false;
-                break;
+                group.size++;
               }
             }
-            var existingGroup = currentGroupMap[groupId];
-            if (allGroupMembersAreAvailableToThisCell && !existingGroup) {
-
+            if (group.size) {
               group.x = Math.round(group.x / group.size);
               group.y = Math.round(group.y / group.size);
-              var leader = getGroupLeader(group);
-              group.tcid = leader.tcid;
+            }
+
+            var allGroupMembersAreAvailableToThisCell = group.size >= expectedMemberCount;
+            var existingGroup = currentGroupMap[groupId];
+            if (allGroupMembersAreAvailableToThisCell &&
+              (!existingGroup || isGroupABetterThanGroupB(group, existingGroup))) {
+
+              group.tcid = channelGrid.getCellIndex(group);
               currentGroupMap[groupId] = group;
             }
           }
@@ -371,6 +363,73 @@ module.exports.run = function (worker) {
       });
     });
     return groupMap;
+  }
+
+  function groupHasLessThanNMembers(groupMembers, n) {
+    var count = 0;
+    var hasLessThanN = true;
+
+    for (var memberId in groupMembers) {
+      if (groupMembers.hasOwnProperty(memberId)) {
+        if (++count >= n) {
+          hasLessThanN = false;
+          break;
+        }
+      }
+    }
+    return hasLessThanN;
+  }
+
+  function groupStateWith(partnerState) {
+    if (!this.external) {
+      if (!this.pendingGroup) {
+        this.pendingGroup = {};
+      }
+      this.pendingGroup[this.id] = this;
+      this.pendingGroup[partnerState.id] = partnerState;
+    }
+
+    if (!partnerState.external) {
+      if (!partnerState.pendingGroup) {
+        partnerState.pendingGroup = {};
+      }
+      partnerState.pendingGroup[this.id] = this;
+      partnerState.pendingGroup[partnerState.id] = partnerState;
+    }
+  }
+
+  function ungroupStateFrom(partnerState) {
+    if (!this.external && this.pendingGroup) {
+      delete this.pendingGroup[partnerState.id];
+      // It's not a group if it has only itself as a member.
+      if (groupHasLessThanNMembers(this.pendingGroup, 2)) {
+        delete this.pendingGroup;
+      }
+    }
+    if (!partnerState.external && partnerState.pendingGroup) {
+      delete partnerState.pendingGroup[this.id];
+      if (groupHasLessThanNMembers(partnerState.pendingGroup, 2)) {
+        delete partnerState.pendingGroup;
+      }
+    }
+  }
+
+  function ungroupStateFromAll() {
+    var self = this;
+
+    var groupMembers = this.pendingGroup || {};
+    Object.keys(groupMembers).forEach(function (memberId) {
+      var cellIndex = self.ccid;
+      var type = self.type;
+
+      var memberSimpleState = groupMembers[memberId];
+      if (cellData[cellIndex] && cellData[cellIndex][type]) {
+        var memberState = cellData[cellIndex][type][memberId];
+        if (memberState) {
+          self.ungroupFrom(memberState);
+        }
+      }
+    });
   }
 
   function prepareStatesForProcessing(cellIndex) {
@@ -381,27 +440,12 @@ module.exports.run = function (worker) {
       var cellDataStates = currentCellData[type] || {};
       Object.keys(cellDataStates).forEach(function (id) {
         var state = cellDataStates[id];
-        var type = state.type;
-        var id = state.id;
-        state.groupWith = function (partnerState) {
-          if (!state.groupMates) {
-            state.groupMates = {};
-          }
-          var stateClone = getSimplifiedState(state);
-          var partnerClone = getSimplifiedState(partnerState);
+        var type = type;
 
-          state.groupMates[partnerState.id] = partnerClone;
-          if (!partnerState.groupMates) {
-            partnerState.groupMates = {};
-          }
-          partnerState.groupMates[id] = stateClone;
-        };
-        state.ungroupFrom = function (partnerState) {
-          delete state.groupMates[partnerState.id];
-          if (partnerState.groupMates) {
-            delete partnerState.groupMates[id];
-          }
-        };
+        state.groupWith = groupStateWith;
+        state.ungroupFrom = ungroupStateFrom;
+        state.ungroupFromAll = ungroupStateFromAll;
+
         if (state.external) {
           if (!currentCellExternalStates[type]) {
             currentCellExternalStates[type] = {};
@@ -415,7 +459,7 @@ module.exports.run = function (worker) {
   // We should never modify states which belong to other cells or
   // else it will result in conflicts and lost states. This function
   // restores them to their pre-processed condition.
-  function restoreExternalStatesAfterProcessing(cellIndex) {
+  function restoreExternalStatesBeforeDispatching(cellIndex) {
     var currentCellData = cellData[cellIndex];
     var currentCellExternalStates = cellExternalStates[cellIndex];
 
@@ -430,9 +474,32 @@ module.exports.run = function (worker) {
     });
   }
 
+  function prepareGroupStatesBeforeDispatching(cellIndex) {
+    var currentCellData = cellData[cellIndex];
+    var currentCellExternalStates = cellExternalStates[cellIndex];
+
+    Object.keys(currentCellData).forEach(function (type) {
+      var cellDataStates = currentCellData[type] || {};
+      Object.keys(cellDataStates).forEach(function (id) {
+        var state = cellDataStates[id];
+        if (state.pendingGroup) {
+          var serializedMemberList = {};
+          Object.keys(state.pendingGroup).forEach(function (memberId) {
+            var memberState = state.pendingGroup[memberId];
+            serializedMemberList[memberId] = getSimplifiedState(memberState);
+          });
+          state.group = serializedMemberList;
+          delete state.pendingGroup;
+        } else if (state.group) {
+          delete state.group;
+        }
+      });
+    });
+  }
+
   // Remove decorator functions which were added to the states temporarily
   // for use within the cell controller.
-  function cleanupStatesAfterProcessing(cellIndex) {
+  function cleanupStatesBeforeDispatching(cellIndex) {
     var currentCellData = cellData[cellIndex];
 
     Object.keys(currentCellData).forEach(function (type) {
@@ -441,7 +508,7 @@ module.exports.run = function (worker) {
         var state = cellDataStates[id];
         delete state.groupWith;
         delete state.ungroupFrom;
-        delete state.groupMates;
+        delete state.ungroupFromAll;
         if (state.op) {
           delete state.op;
         }
@@ -457,7 +524,9 @@ module.exports.run = function (worker) {
     cellIndexList.forEach(function (cellIndex) {
       prepareStatesForProcessing(cellIndex);
       cellControllers[cellIndex].run(cellData[cellIndex]);
-      restoreExternalStatesAfterProcessing(cellIndex);
+      prepareGroupStatesBeforeDispatching(cellIndex);
+      cleanupStatesBeforeDispatching(cellIndex);
+      restoreExternalStatesBeforeDispatching(cellIndex);
       dispatchProcessedData(cellIndex);
     });
 
@@ -470,7 +539,7 @@ module.exports.run = function (worker) {
           var cellDataStates = currentCellData[type] || {};
           Object.keys(cellDataStates).forEach(function (id) {
             var state = cellDataStates[id];
-            if (!state.groupMates && !state.external &&
+            if (!state.group && !state.external &&
               (!cellPendingDeletes[cellIndex][type] || !cellPendingDeletes[cellIndex][type][id])) {
 
               transformedStateList.push(
@@ -512,10 +581,6 @@ module.exports.run = function (worker) {
           });
         }
       });
-    });
-
-    cellIndexList.forEach(function (cellIndex) {
-      cleanupStatesAfterProcessing(cellIndex);
     });
 
     // External channel which clients can subscribe to.
@@ -562,26 +627,25 @@ module.exports.run = function (worker) {
 
       // The target cell id
       state.tcid = channelGrid.getCellIndex(state);
+
+      // For newly created states (those created from inside the cell).
+      if (state.ccid == null) {
+        state.ccid = cellIndex;
+      }
       updateStateExternalTag(state, cellIndex);
 
       if (state.ccid == cellIndex) {
         var nearbyCellIndexes = channelGrid.getAllCellIndexes(state);
         nearbyCellIndexes.forEach(function (nearbyCellIndex) {
-          if (nearbyCellIndex != state.ccid && nearbyCellIndex != state.tcid) {
+          if (nearbyCellIndex != cellIndex) {
             if (!statesForNearbyCells[nearbyCellIndex]) {
               statesForNearbyCells[nearbyCellIndex] = [];
             }
             statesForNearbyCells[nearbyCellIndex].push(state);
           }
         });
-      }
 
-      if (state.ccid != state.tcid) {
-        if (!statesForNearbyCells[state.tcid]) {
-          statesForNearbyCells[state.tcid] = [];
-        }
-        statesForNearbyCells[state.tcid].push(state);
-        if (swid) {
+        if (state.tcid != cellIndex && swid) {
           if (!workerStateRefList[swid]) {
             workerStateRefList[swid] = [];
           }
@@ -605,7 +669,7 @@ module.exports.run = function (worker) {
         }
         cellPendingDeletes[cellIndex][type][id] = state;
         delete currentCellData[type][id];
-      } else if (state.external && Date.now() - state.processed > WORLD_STALE_TIMEOUT) {
+      } else if (Date.now() - state.processed > WORLD_STALE_TIMEOUT) {
         delete currentCellData[type][id];
       }
     });
@@ -700,16 +764,17 @@ module.exports.run = function (worker) {
       }
 
       if (!currentCellData[type][id]) {
+        var state;
         if (stateRef.create) {
-          // If is a stateRef
-          var state = stateRef.create;
-          state.ccid = cellIndex;
-          currentCellData[type][id] = state;
+          // If it is a stateRef, we get the state from the create property.
+          state = stateRef.create;
         } else if (stateRef.x != null && stateRef.y != null) {
           // If we have x and y properties, then we know that
-          // this is a full state.
-          currentCellData[type][id] = stateRef;
+          // this is a full state already (probably created directly inside the cell).
+          state = stateRef;
         }
+        state.ccid = cellIndex;
+        currentCellData[type][id] = state;
       }
       var cachedState = currentCellData[type][id];
       if (cachedState) {
@@ -779,6 +844,7 @@ module.exports.run = function (worker) {
     In here we handle our incoming realtime connections and listen for events.
   */
   scServer.on('connection', function (socket) {
+
     socket.on('getWorldInfo', function (data, respond) {
       // The first argument to respond can optionally be an Error object.
       respond(null, {
