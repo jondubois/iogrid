@@ -29,11 +29,6 @@
         codecEngine: scCodecMinBin
       });
 
-      socket.subscribe('debug-response').watch(function (data) {
-        console.log('DEBUG RESPONSE:', JSON.stringify(data, null, 2));
-      });
-
-
       window.onload = function () {
 
         //  Note that this html file is set to pull down Phaser from our public/ directory.

@@ -85,6 +85,7 @@ CoinManager.prototype.removeCoin = function (coinId) {
   var coin = this.coins[coinId];
   if (coin) {
     coin.delete = 1;
+    delete this.coins[coinId];
     this.coinCount--;
   }
 };

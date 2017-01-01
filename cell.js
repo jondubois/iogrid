@@ -38,6 +38,7 @@
 
 var rbush = require('rbush');
 var SAT = require('sat');
+var BotManager = require('./bot-manager').BotManager;
 var CoinManager = require('./coin-manager').CoinManager;
 
 // This controller will be instantiated once for each
@@ -46,6 +47,35 @@ var CoinManager = require('./coin-manager').CoinManager;
 var CellController = function (options) {
   this.options = options;
   this.cellIndex = options.cellIndex;
+
+  var cellData = options.cellData;
+
+  this.botManager = new BotManager({
+    worldWidth: options.worldWidth,
+    worldHeight: options.worldHeight,
+    botDiameter: options.botDiameter,
+    botMoveSpeed: options.botMoveSpeed,
+    botMass: options.botMass,
+    botColor: options.botColor,
+    botChangeDirectionProbability: options.botChangeDirectionProbability
+  });
+
+  if (!cellData.player) {
+    cellData.player = {};
+  }
+
+  for (var b = 0; b < options.botCount; b++) {
+    var bot = this.botManager.addBot();
+    cellData.player[bot.id] = bot;
+  }
+
+  this.botMoves = [
+    {u: 1},
+    {d: 1},
+    {r: 1},
+    {l: 1}
+  ];
+
   this.coinManager = new CoinManager({
     cellData: options.cellData,
     cellBounds: options.cellBounds,
@@ -55,12 +85,7 @@ var CellController = function (options) {
     coinRadius: options.coinRadius
   });
   this.lastCoinDrop = 0;
-  this.botMoves = [
-    {u: 1},
-    {d: 1},
-    {r: 1},
-    {l: 1}
-  ];
+
   this.playerCompareFn = function (a, b) {
     if (a.id < b.id) {
       return -1;

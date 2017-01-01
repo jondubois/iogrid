@@ -7,11 +7,13 @@ StateManager.prototype.create = function (state) {
   var stateCellIndex = this.channelGrid.getCellIndex(state);
   var stateRef = {
     id: state.id,
-    swid: state.swid,
     tcid: stateCellIndex, // Target cell index.
     type: state.type,
     create: state
   };
+  if (state.swid != null) {
+    stateRef.swid = state.swid;
+  }
   this.stateRefs[state.id] = stateRef;
   return stateRef;
 };

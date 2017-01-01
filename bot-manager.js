@@ -8,7 +8,6 @@ var BOT_DEFAULT_CHANGE_DIRECTION_PROBABILITY = 0.01;
 var BOT_DEFAULT_COLOR = 1000;
 
 var BotManager = function (options) {
-  this.serverWorkerId = options.serverWorkerId;
   this.worldWidth = options.worldWidth;
   this.worldHeight = options.worldHeight;
   this.botDiameter = options.botDiameter || BOT_DEFAULT_DIAMETER;
@@ -17,7 +16,6 @@ var BotManager = function (options) {
   this.botColor = options.botColor || BOT_DEFAULT_COLOR;
   this.botChangeDirectionProbability = options.botChangeDirectionProbability || BOT_DEFAULT_CHANGE_DIRECTION_PROBABILITY;
 
-  this.stateManager = options.stateManager;
   this.bots = {};
   this.botCount = 0;
 
@@ -46,11 +44,10 @@ BotManager.prototype.addBot = function (options) {
   var radius = Math.round(diameter / 2);
   var botId = uuid.v4();
 
-  var botData = {
+  var bot = {
     id: botId,
     type: 'player',
     subtype: 'bot',
-    swid: this.serverWorkerId,
     name: options.name || 'bot-' + Math.round(Math.random() * 10000),
     color: options.color || this.botColor,
     score: options.score || 0,
@@ -59,34 +56,34 @@ BotManager.prototype.addBot = function (options) {
     width: diameter,
     height: diameter,
     changeDirProb: this.botChangeDirectionProbability,
-    op: {},
-    processed: Date.now()
+    op: {}
   };
   if (options.x && options.y) {
-    botData.x = options.x;
-    botData.y = options.y;
+    bot.x = options.x;
+    bot.y = options.y;
   } else {
     var position = this.generateRandomPosition(radius);
     if (options.x) {
-      botData.x = options.x;
+      bot.x = options.x;
     } else {
-      botData.x = position.x;
+      bot.x = position.x;
     }
     if (options.y) {
-      botData.y = options.y;
+      bot.y = options.y;
     } else {
-      botData.y = position.y;
+      bot.y = position.y;
     }
   }
-  var bot = this.stateManager.create(botData);
   this.bots[botId] = bot;
-
   this.botCount++;
+
+  return bot;
 };
 
 BotManager.prototype.removeBot = function (botId) {
-  if (this.bots[botId]) {
-    this.stateManager.delete(this.bots[botId]);
+  var bot = this.bots[botId];
+  if (bot) {
+    bot.delete = 1;
     delete this.bots[botId];
     this.botCount--;
   }

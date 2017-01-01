@@ -6,7 +6,6 @@ var path = require('path');
 var morgan = require('morgan');
 var healthChecker = require('sc-framework-health-check');
 var StateManager = require('./state-manager').StateManager;
-var BotManager = require('./bot-manager').BotManager;
 var uuid = require('uuid');
 var ChannelGrid = require('./public/channel-grid').ChannelGrid;
 var SAT = require('sat');
@@ -187,18 +186,6 @@ module.exports.run = function (worker) {
     channelGrid: channelGrid
   });
 
-  var botManager = new BotManager({
-    serverWorkerId: serverWorkerId,
-    worldWidth: WORLD_WIDTH,
-    worldHeight: WORLD_HEIGHT,
-    botDiameter: BOT_DIAMETER,
-    botMoveSpeed: BOT_MOVE_SPEED,
-    botMass: BOT_MASS,
-    botColor: BOT_COLOR,
-    botChangeDirectionProbability: BOT_CHANGE_DIRECTION_PROBABILITY,
-    stateManager: stateManager
-  });
-
   if (WORLD_CELLS % worker.options.workers != 0) {
     var errorMessage = 'The number of cells in your world (determined by WORLD_WIDTH, WORLD_HEIGHT, WORLD_CELL_WIDTH, WORLD_CELL_HEIGHT)' +
       ' should share a common factor with the number of workers or else the workload might get duplicated for some cells.';
@@ -225,13 +212,19 @@ module.exports.run = function (worker) {
       cellIndex: cellIndex,
       cellData: cellData[cellIndex],
       cellBounds: channelGrid.getCellBounds(cellIndex),
-      coinPlayerNoDropRadius: COIN_PLAYER_NO_DROP_RADIUS,
-      coinMaxCount: Math.round(COIN_MAX_COUNT / WORLD_CELLS),
-      coinDropInterval: COIN_DROP_INTERVAL * WORLD_CELLS,
-      coinRadius: COIN_RADIUS,
       worldWidth: WORLD_WIDTH,
       worldHeight: WORLD_HEIGHT,
       worldUpdateInterval: WORLD_UPDATE_INTERVAL,
+      coinPlayerNoDropRadius: COIN_PLAYER_NO_DROP_RADIUS,
+      coinMaxCount: Math.round(COIN_MAX_COUNT / WORLD_CELLS),
+      coinDropInterval: COIN_DROP_INTERVAL * WORLD_CELLS,
+      botCount: Math.round(BOT_COUNT / WORLD_CELLS),
+      coinRadius: COIN_RADIUS,
+      botDiameter: BOT_DIAMETER,
+      botMoveSpeed: BOT_MOVE_SPEED,
+      botMass: BOT_MASS,
+      botColor: BOT_COLOR,
+      botChangeDirectionProbability: BOT_CHANGE_DIRECTION_PROBABILITY,
       playerMoveSpeed: PLAYER_MOVE_SPEED
     });
 
@@ -296,8 +289,6 @@ module.exports.run = function (worker) {
     return groupA.leader.id <= groupB.leader.id;
   }
 
-  // TODO: Fix issue with blinking player/bots
-  // when one member in the group disconnects.
   function getStateGroups() {
     var groupMap = {};
     Object.keys(cellData).forEach(function (cellIndex) {
@@ -663,6 +654,7 @@ module.exports.run = function (worker) {
           }
           workerStateRefList[swid].push(stateRef);
         }
+        state.processed = Date.now();
       }
 
       if (state.delete) {
@@ -811,6 +803,7 @@ module.exports.run = function (worker) {
 
     stateIds.forEach(function (id) {
       var state = game.stateRefs[id];
+      // Don't include bots.
       stateList.push(state);
     });
 
@@ -836,11 +829,6 @@ module.exports.run = function (worker) {
   }
 
   setInterval(processInputStates, WORLD_UPDATE_INTERVAL);
-
-  var botsPerWorker = Math.round(BOT_COUNT / worker.options.workers);
-  for (var b = 0; b < botsPerWorker; b++) {
-    botManager.addBot();
-  }
 
   /*
     In here we handle our incoming realtime connections and listen for events.
