@@ -296,6 +296,8 @@ module.exports.run = function (worker) {
     return groupA.leader.id <= groupB.leader.id;
   }
 
+  // TODO: Fix issue with blinking player/bots
+  // when one member in the group disconnects.
   function getStateGroups() {
     var groupMap = {};
     Object.keys(cellData).forEach(function (cellIndex) {

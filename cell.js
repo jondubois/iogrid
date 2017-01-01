@@ -197,9 +197,7 @@ CellController.prototype.applyPlayerOps = function (playerIds, players, coins) {
       player.coinOverlaps.forEach(function (coin) {
         if (self.testCircleCollision(player, coin).collided) {
           player.score += coin.v;
-          // This will tell the engine to delete the coin
-          // and will notify clients.
-          coin.delete = 1;
+          self.coinManager.removeCoin(coin.id);
         }
       });
       delete player.coinOverlaps;

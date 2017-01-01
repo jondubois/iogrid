@@ -82,8 +82,9 @@ CoinManager.prototype.addCoin = function (value, radius) {
 };
 
 CoinManager.prototype.removeCoin = function (coinId) {
-  if (this.coins[coinId]) {
-    delete this.coins[coinId];
+  var coin = this.coins[coinId];
+  if (coin) {
+    coin.delete = 1;
     this.coinCount--;
   }
 };
