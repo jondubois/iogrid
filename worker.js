@@ -433,11 +433,6 @@ module.exports.run = function (worker) {
       var cellDataStates = currentCellData[type] || {};
       Object.keys(cellDataStates).forEach(function (id) {
         var state = cellDataStates[id];
-        var type = type;
-
-        state.groupWith = groupStateWith;
-        state.ungroupFrom = ungroupStateFrom;
-        state.ungroupFromAll = ungroupStateFromAll;
 
         if (state.external) {
           if (!currentCellExternalStates[type]) {
@@ -445,6 +440,10 @@ module.exports.run = function (worker) {
           }
           currentCellExternalStates[type][id] = _.cloneDeep(state);
         }
+
+        state.groupWith = groupStateWith;
+        state.ungroupFrom = ungroupStateFrom;
+        state.ungroupFromAll = ungroupStateFromAll;
       });
     });
   }
@@ -456,13 +455,20 @@ module.exports.run = function (worker) {
     var currentCellData = cellData[cellIndex];
     var currentCellExternalStates = cellExternalStates[cellIndex];
 
-    Object.keys(currentCellData).forEach(function (type) {
-      var cellDataStates = currentCellData[type] || {};
-      Object.keys(cellDataStates).forEach(function (id) {
-        if (currentCellExternalStates[type] && currentCellExternalStates[type][id]) {
-          cellDataStates[id] = currentCellExternalStates[type][id];
-          delete currentCellExternalStates[type][id];
-        }
+    // Object.keys(currentCellData).forEach(function (type) {
+    //   var cellDataStates = currentCellData[type] || {};
+    //   Object.keys(cellDataStates).forEach(function (id) {
+    //     if (currentCellExternalStates[type] && currentCellExternalStates[type][id]) {
+    //       cellDataStates[id] = currentCellExternalStates[type][id];
+    //       delete currentCellExternalStates[type][id];
+    //     }
+    //   });
+    // });
+    Object.keys(currentCellExternalStates).forEach(function (type) {
+      var externalStatesList = currentCellExternalStates[type];
+      Object.keys(externalStatesList).forEach(function (id) {
+        currentCellData[type][id] = externalStatesList[id];
+        delete externalStatesList[id];
       });
     });
   }
@@ -608,6 +614,7 @@ module.exports.run = function (worker) {
 
   // Share states with adjacent cells when those states get near
   // other cells' boundaries and prepare for transition to other cells.
+  // This logic is quite complex so be careful when changing any code here.
   function dispatchProcessedData(cellIndex) {
     var currentCellData = cellData[cellIndex];
     var workerStateRefList = {};
@@ -630,11 +637,22 @@ module.exports.run = function (worker) {
       if (state.ccid == cellIndex) {
         var nearbyCellIndexes = channelGrid.getAllCellIndexes(state);
         nearbyCellIndexes.forEach(function (nearbyCellIndex) {
+          if (!statesForNearbyCells[nearbyCellIndex]) {
+            statesForNearbyCells[nearbyCellIndex] = [];
+          }
+          // No need for the cell to send states to itself.
           if (nearbyCellIndex != cellIndex) {
-            if (!statesForNearbyCells[nearbyCellIndex]) {
-              statesForNearbyCells[nearbyCellIndex] = [];
+            // If the state is transitioning to a new owner cell, then
+            // we want to be extra careful and make sure that it is not
+            // already in the middle of a transition (synching).
+            if (nearbyCellIndex == state.tcid) {
+              if (!state.synching) {
+                state.synching = 1;
+                statesForNearbyCells[nearbyCellIndex].push(state);
+              }
+            } else {
+              statesForNearbyCells[nearbyCellIndex].push(state);
             }
-            statesForNearbyCells[nearbyCellIndex].push(state);
           }
         });
 
@@ -654,8 +672,9 @@ module.exports.run = function (worker) {
           }
           workerStateRefList[swid].push(stateRef);
         }
-        state.processed = Date.now();
       }
+
+      state.processed = Date.now();
 
       if (state.delete) {
         if (!cellPendingDeletes[cellIndex][type]) {
@@ -663,7 +682,8 @@ module.exports.run = function (worker) {
         }
         cellPendingDeletes[cellIndex][type][id] = state;
         delete currentCellData[type][id];
-      } else if (Date.now() - state.processed > WORLD_STALE_TIMEOUT) {
+      }
+      if (Date.now() - state.processed > WORLD_STALE_TIMEOUT) {
         delete currentCellData[type][id];
       }
     });
@@ -706,6 +726,7 @@ module.exports.run = function (worker) {
     stateList.forEach(function (state) {
       var type = state.type;
       var id = state.id;
+      delete state.synching;
       state.processed = Date.now();
 
       if (!currentCellData[type]) {
@@ -713,22 +734,26 @@ module.exports.run = function (worker) {
       }
       var existingState = currentCellData[type][id];
 
-      if (state.tcid == cellIndex) {
-        // Previous cell id.
-        state.pcid = state.ccid;
-        // This is a full transition to our current cell.
-        state.ccid = cellIndex;
-        currentCellData[type][id] = state;
-        newlyAcceptedStates.push(state);
-      } else {
-        // This is just external state for us to track but not
-        // a complete transition, the state will still be managed by
-        // a different cell.
-        if (!existingState || existingState.external) {
+      // Do not overwrite a state which is in the middle of
+      // being synchronized with a different cell.
+      if (!existingState || !existingState.synching) {
+        if (state.tcid == cellIndex) {
+          // Previous cell id.
+          state.pcid = state.ccid;
+          // This is a full transition to our current cell.
+          state.ccid = cellIndex;
           currentCellData[type][id] = state;
+          newlyAcceptedStates.push(state);
+        } else {
+          // This is just external state for us to track but not
+          // a complete transition, the state will still be managed by
+          // a different cell.
+          if (!existingState || existingState.external) {
+            currentCellData[type][id] = state;
+          }
         }
+        updateStateExternalTag(state, cellIndex);
       }
-      updateStateExternalTag(state, cellIndex);
     });
 
     newlyAcceptedStates.forEach(function (state) {

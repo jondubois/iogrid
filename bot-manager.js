@@ -16,9 +16,6 @@ var BotManager = function (options) {
   this.botColor = options.botColor || BOT_DEFAULT_COLOR;
   this.botChangeDirectionProbability = options.botChangeDirectionProbability || BOT_DEFAULT_CHANGE_DIRECTION_PROBABILITY;
 
-  this.bots = {};
-  this.botCount = 0;
-
   this.botMoves = [
     {u: 1},
     {d: 1},
@@ -74,19 +71,12 @@ BotManager.prototype.addBot = function (options) {
       bot.y = position.y;
     }
   }
-  this.bots[botId] = bot;
-  this.botCount++;
 
   return bot;
 };
 
-BotManager.prototype.removeBot = function (botId) {
-  var bot = this.bots[botId];
-  if (bot) {
-    bot.delete = 1;
-    delete this.bots[botId];
-    this.botCount--;
-  }
+BotManager.prototype.removeBot = function (bot) {
+  bot.delete = 1;
 };
 
 module.exports.BotManager = BotManager;
