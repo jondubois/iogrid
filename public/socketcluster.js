@@ -110,7 +110,7 @@ module.exports.destroy = function (options) {
 
 module.exports.connections = SCSocketCreator.connections;
 
-module.exports.version = '5.2.2';
+module.exports.version = '5.2.3';
 
 },{"./lib/scsocket":5,"./lib/scsocketcreator":6,"sc-emitter":18}],3:[function(require,module,exports){
 (function (global){
@@ -1290,6 +1290,10 @@ function destroy(options) {
     }
   }
   var multiplexId = getMultiplexId(opts);
+  var socket = _connections[multiplexId];
+  if (socket) {
+    socket.disconnect();
+  }
   delete _connections[multiplexId];
 }
 
