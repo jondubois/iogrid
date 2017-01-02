@@ -455,15 +455,6 @@ module.exports.run = function (worker) {
     var currentCellData = cellData[cellIndex];
     var currentCellExternalStates = cellExternalStates[cellIndex];
 
-    // Object.keys(currentCellData).forEach(function (type) {
-    //   var cellDataStates = currentCellData[type] || {};
-    //   Object.keys(cellDataStates).forEach(function (id) {
-    //     if (currentCellExternalStates[type] && currentCellExternalStates[type][id]) {
-    //       cellDataStates[id] = currentCellExternalStates[type][id];
-    //       delete currentCellExternalStates[type][id];
-    //     }
-    //   });
-    // });
     Object.keys(currentCellExternalStates).forEach(function (type) {
       var externalStatesList = currentCellExternalStates[type];
       Object.keys(externalStatesList).forEach(function (id) {
