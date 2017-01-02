@@ -4,11 +4,12 @@ SocketCluster Phaser Sample
 This is an IO game engine built using SocketCluster and Phaser.
 It is designed to scale across multiple processes to make use of all CPU cores on a machine.
 
-The game world is divided into cells which will are distributed across available SC worker processes.
+The game world is divided into cells which will be distributed across available SC worker processes.
 Basic initial tests indicate that this engine can scale linearly across available CPU cores.
+As players/bots in the game world move between cells, they actually transition across CPU cores on your machine.
 
-Each cell in the world has its own cell controller (`cell.js`) - Ideally, you can put all your backend game logic in there
-and if you follow some simple structural guidelines, your code should automatically scale.
+Each cell in the world has its own instance of a cell controller (`cell.js`) - Ideally, this is where you should put all your back end game logic.
+If you follow some simple structural guidelines, your code should automatically scale.
 With this approach, you should be able to build very large worlds which can host many players
 (though it's still too early to give out specific numbers).
 
