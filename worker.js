@@ -79,6 +79,7 @@ var privateProps = {
   groupWith: true,
   ungroupFrom: true,
   group: true,
+  version: true,
   external: true
 };
 
@@ -289,6 +290,22 @@ module.exports.run = function (worker) {
     return groupA.leader.id <= groupB.leader.id;
   }
 
+  /*
+    Groups are not passed around between cells/processes. Their purpose is to allow
+    states to seamlessly interact with one another across cell boundaries.
+
+    When one state affects another state across cell boundaries (e.g. one player
+    pushing another player into a different cell), there is a slight delay for
+    the position information to be shared across processes/CPU cores; as a
+    result of this, the states may not show up in the exact same position in both cells.
+    When two cells report slightly different positions for the same set of
+    states, it may cause overlapping and flickering on the front end since the
+    front end doesn't know which data to trust.
+
+    A group allows two cells to agree on which cell is responsible for broadcasting the
+    position of states that are within the group by considering the group's average position
+    instead of looking at the position of member states individually.
+  */
   function getStateGroups() {
     var groupMap = {};
     Object.keys(cellData).forEach(function (cellIndex) {
@@ -512,6 +529,7 @@ module.exports.run = function (worker) {
     var transformedStateList = [];
 
     cellIndexList.forEach(function (cellIndex) {
+      cellIndex = Number(cellIndex);
       prepareStatesForProcessing(cellIndex);
       cellControllers[cellIndex].run(cellData[cellIndex]);
       prepareGroupStatesBeforeDispatching(cellIndex);
@@ -523,6 +541,7 @@ module.exports.run = function (worker) {
     var groupMap = getStateGroups();
 
     cellIndexList.forEach(function (cellIndex) {
+      cellIndex = Number(cellIndex);
       var currentCellData = cellData[cellIndex];
       Object.keys(currentCellData).forEach(function (type) {
         if (!cellSpecialIntervalTypes[type]) {
@@ -544,6 +563,7 @@ module.exports.run = function (worker) {
     // Deletions are processed as part of WORLD_UPDATE_INTERVAL even if
     // that type has its own special interval.
     Object.keys(cellPendingDeletes).forEach(function (cellIndex) {
+      cellIndex = Number(cellIndex);
       var currentCellDeletes = cellPendingDeletes[cellIndex];
       Object.keys(currentCellDeletes).forEach(function (type) {
         var cellDeleteStates = currentCellDeletes[type] || {};
@@ -559,6 +579,7 @@ module.exports.run = function (worker) {
     });
 
     Object.keys(groupMap).forEach(function (cellIndex) {
+      cellIndex = Number(cellIndex);
       var currentGroupMap = groupMap[cellIndex];
       Object.keys(currentGroupMap).forEach(function (groupId) {
         var group = currentGroupMap[groupId];
@@ -607,6 +628,7 @@ module.exports.run = function (worker) {
   // other cells' boundaries and prepare for transition to other cells.
   // This logic is quite complex so be careful when changing any code here.
   function dispatchProcessedData(cellIndex) {
+    var now = Date.now();
     var currentCellData = cellData[cellIndex];
     var workerStateRefList = {};
     var statesForNearbyCells = {};
@@ -615,6 +637,17 @@ module.exports.run = function (worker) {
       var id = state.id;
       var swid = state.swid;
       var type = state.type;
+
+      if (!state.external) {
+        if (state.version) {
+          state.version++;
+          if (state.version >= Number.MAX_SAFE_INTEGER) {
+            state.version = 0;
+          }
+        } else {
+          state.version = 1;
+        }
+      }
 
       // The target cell id
       state.tcid = channelGrid.getCellIndex(state);
@@ -633,17 +666,7 @@ module.exports.run = function (worker) {
           }
           // No need for the cell to send states to itself.
           if (nearbyCellIndex != cellIndex) {
-            // If the state is transitioning to a new owner cell, then
-            // we want to be extra careful and make sure that it is not
-            // already in the middle of a transition (synching).
-            if (nearbyCellIndex == state.tcid) {
-              if (!state.synching) {
-                state.synching = 1;
-                statesForNearbyCells[nearbyCellIndex].push(state);
-              }
-            } else {
-              statesForNearbyCells[nearbyCellIndex].push(state);
-            }
+            statesForNearbyCells[nearbyCellIndex].push(state);
           }
         });
 
@@ -665,7 +688,7 @@ module.exports.run = function (worker) {
         }
       }
 
-      state.processed = Date.now();
+      state.processed = now;
 
       if (state.delete) {
         if (!cellPendingDeletes[cellIndex][type]) {
@@ -674,7 +697,7 @@ module.exports.run = function (worker) {
         cellPendingDeletes[cellIndex][type][id] = state;
         delete currentCellData[type][id];
       }
-      if (Date.now() - state.processed > WORLD_STALE_TIMEOUT) {
+      if (now - state.processed > WORLD_STALE_TIMEOUT) {
         delete currentCellData[type][id];
       }
     });
@@ -697,7 +720,9 @@ module.exports.run = function (worker) {
       var type = state.type;
       var id = state.id;
 
-      if (currentCellData[type] && currentCellData[type][id]) {
+      if (!currentCellData[type] || !currentCellData[type][id] ||
+        state.version > currentCellData[type][id].version || !state.version) {
+
         state.processed = Date.now();
         updateStateExternalTag(state, cellIndex);
         currentCellData[type][id] = state;
@@ -717,7 +742,6 @@ module.exports.run = function (worker) {
     stateList.forEach(function (state) {
       var type = state.type;
       var id = state.id;
-      delete state.synching;
       state.processed = Date.now();
 
       if (!currentCellData[type]) {
@@ -725,9 +749,9 @@ module.exports.run = function (worker) {
       }
       var existingState = currentCellData[type][id];
 
-      // Do not overwrite a state which is in the middle of
-      // being synchronized with a different cell.
-      if (!existingState || !existingState.synching) {
+      if (!existingState || state.version > existingState.version || !state.version) {
+        // Do not overwrite a state which is in the middle of
+        // being synchronized with a different cell.
         if (state.tcid == cellIndex) {
           // Previous cell id.
           state.pcid = state.ccid;
@@ -739,12 +763,10 @@ module.exports.run = function (worker) {
           // This is just external state for us to track but not
           // a complete transition, the state will still be managed by
           // a different cell.
-          if (!existingState || existingState.external) {
-            currentCellData[type][id] = state;
-          }
+          currentCellData[type][id] = state;
         }
-        updateStateExternalTag(state, cellIndex);
       }
+      updateStateExternalTag(state, cellIndex);
     });
 
     newlyAcceptedStates.forEach(function (state) {
@@ -782,8 +804,11 @@ module.exports.run = function (worker) {
           // If we have x and y properties, then we know that
           // this is a full state already (probably created directly inside the cell).
           state = stateRef;
+        } else {
+          throw new Error('Received an invalid state reference');
         }
         state.ccid = cellIndex;
+        state.version = 1;
         currentCellData[type][id] = state;
       }
       var cachedState = currentCellData[type][id];
