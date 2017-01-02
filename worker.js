@@ -100,7 +100,6 @@ var OUTBOUND_STATE_TRANSFORMERS = {
 
 var CHANNEL_INBOUND_CELL_PROCESSING = 'internal/cell-processing-inbound';
 var CHANNEL_CELL_TRANSITION = 'internal/cell-transition';
-var CHANNEL_CELL_TRANSITION_ACK = 'internal/cell-transition-ack';
 
 var game = {
   stateRefs: {}
@@ -231,7 +230,6 @@ module.exports.run = function (worker) {
 
     channelGrid.watchCellAtIndex(CHANNEL_INBOUND_CELL_PROCESSING, cellIndex, gridCellDataHandler.bind(null, cellIndex));
     channelGrid.watchCellAtIndex(CHANNEL_CELL_TRANSITION, cellIndex, gridCellTransitionHandler.bind(null, cellIndex));
-    channelGrid.watchCellAtIndex(CHANNEL_CELL_TRANSITION_ACK, cellIndex, gridCellTransitionAckHandler.bind(null, cellIndex));
   }
 
   function applyOutboundStateTransformer(state) {
@@ -714,30 +712,12 @@ module.exports.run = function (worker) {
     });
   }
 
-  function gridCellTransitionAckHandler(cellIndex, stateList) {
-    var currentCellData = cellData[cellIndex];
-    stateList.forEach(function (state) {
-      var type = state.type;
-      var id = state.id;
-
-      if (!currentCellData[type] || !currentCellData[type][id] ||
-        state.version > currentCellData[type][id].version || !state.version) {
-
-        state.processed = Date.now();
-        updateStateExternalTag(state, cellIndex);
-        currentCellData[type][id] = state;
-      }
-    });
-  }
-
   // Receive states which are in other cells and *may* transition to this cell later.
   // We don't manage these states, we just keep a copy so that they are visible
   // inside our cellController (cell.js) - This allows states to interact across
   // cell partitions (which may be hosted on a different process/CPU core).
   function gridCellTransitionHandler(cellIndex, stateList) {
     var currentCellData = cellData[cellIndex];
-    var transitionAckMap = {};
-    var newlyAcceptedStates = [];
 
     stateList.forEach(function (state) {
       var type = state.type;
@@ -758,27 +738,14 @@ module.exports.run = function (worker) {
           // This is a full transition to our current cell.
           state.ccid = cellIndex;
           currentCellData[type][id] = state;
-          newlyAcceptedStates.push(state);
         } else {
           // This is just external state for us to track but not
           // a complete transition, the state will still be managed by
           // a different cell.
           currentCellData[type][id] = state;
         }
+        updateStateExternalTag(state, cellIndex);
       }
-      updateStateExternalTag(state, cellIndex);
-    });
-
-    newlyAcceptedStates.forEach(function (state) {
-      var pcid = state.pcid;
-      if (!transitionAckMap[pcid]) {
-        transitionAckMap[pcid] = [];
-      }
-      delete state.pcid;
-      transitionAckMap[pcid].push(state);
-    });
-    Object.keys(transitionAckMap).forEach(function (ackCellIndex) {
-      channelGrid.publishToCells(CHANNEL_CELL_TRANSITION_ACK, transitionAckMap[ackCellIndex], [ackCellIndex]);
     });
   }
 
