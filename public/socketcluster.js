@@ -110,7 +110,7 @@ module.exports.destroy = function (options) {
 
 module.exports.connections = SCSocketCreator.connections;
 
-module.exports.version = '5.2.3';
+module.exports.version = '5.2.4';
 
 },{"./lib/scsocket":5,"./lib/scsocketcreator":6,"sc-emitter":18}],3:[function(require,module,exports){
 (function (global){
@@ -1253,7 +1253,7 @@ function connect(options) {
     authTokenName: 'socketCluster.authToken',
     binaryType: 'arraybuffer',
     multiplex: true,
-    cloneData: true
+    cloneData: false
   };
   for (var i in options) {
     if (options.hasOwnProperty(i)) {
