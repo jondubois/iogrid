@@ -18,8 +18,9 @@ var CellController = require('./cell');
 var WORLD_WIDTH = 2000;
 var WORLD_HEIGHT = 2000;
 
-// Dividing the world into vertical or horizontal strips (instead of cells)
-// is more efficient.
+// Dividing the world into tall vertical strips (instead of square cells)
+// tends to be more efficient (but this may vary depending on your use case
+// and world size).
 var WORLD_CELL_WIDTH = 500;
 var WORLD_CELL_HEIGHT = 2000;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
@@ -37,6 +38,14 @@ var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
   between multiple cells.
 */
 var WORLD_CELL_OVERLAP_DISTANCE = 150;
+
+/*
+  This is the interval (in milliseconds) within which the world updates itself.
+  It also determines the frequency at which data is broadcast to users.
+  Making this value higher will boost performance and reduce bandwidth consumption
+  but will increase lag. 20ms is actually really fast - If you add some sort of
+  motion smoothing on the front end, 50ms or higher should be more than adequate.
+*/
 var WORLD_UPDATE_INTERVAL = 20;
 
 // Delete states which have gone stale (not being updated anymore).

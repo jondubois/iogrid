@@ -5,8 +5,9 @@ This is an IO game engine built using SocketCluster and Phaser.
 It is designed to scale across multiple processes to make use of all CPU cores on a machine.
 
 The game world is divided into cells which will be distributed across available SC worker processes.
-Basic initial tests indicate that this engine can scale linearly across available CPU cores.
-As players/bots in the game world move between cells, they actually transition across CPU cores on your machine.
+Basic initial tests indicate that this engine can scale linearly across available CPU cores - We've found that doubling
+the number of worker processes allowed us to handle approximately double the number of bots whilst maintaining the average CPU ratio
+per worker process at 50%.
 
 Each cell in the world has its own instance of a cell controller (`cell.js`) - Ideally, this is where you should put all your back end game logic.
 If you follow some simple structural guidelines, your code should automatically scale.
@@ -16,6 +17,8 @@ With this approach, you should be able to build very large worlds which can host
 If you've built a game using this engine, feel free to contribute back to this repo.
 Also, feel free to get in touch with me directly by email (in my GitHub profile) if you'd like to chat, have feedback,
 need advice or need help with a project.
+
+Special thanks to the Percepts and Concepts Laboratory at Indiana University (http://cognitrn.psych.indiana.edu/) for sponsoring this project.
 
 Jon
 
@@ -78,7 +81,8 @@ Unless your CPU/OS is particularly efficient with multitasking, you generally wa
 
 Deciding on the correct ratio of workers to brokers is a bit of a balancing act and will vary based on your specific workload - You will have to try it out and watch your processes. When you launch the engine, SocketCluster will tell you the PIDs of your worker and broker processes.
 
-Based on the rudimentary tests that I've carried out so far, I've found that you generally need more workers than brokers but a ratio of 1:1 with workers to brokers tends to be the safest.
+Based on the rudimentary tests that I've carried out so far, I've found that you generally need more workers than brokers. The ratio of workers to brokers that seems
+to work best for most use cases is approximately 2:1.
 
 Also note that cell controllers (`cell.js`) will be evenly sharded across available workers. For this reason, it is highly recommended that you divide your world grid
 in such a way that your number of worker processes and total number of cells share a common factor. So for example, if you have 3 workers, you can have a world grid with dimensions of 3000 * 3000 pixels made up of 3 cells of dimensions 1000 * 3000 (rectangular cells are fine; in fact, I highly encourage them since they are more efficient).
@@ -89,4 +93,3 @@ It's still very early for this project, here are some things that still need imp
 
 - The front end needs some sort of motion smoothing since we don't want to set the WORLD_UPDATE_INTERVAL too high (for bandwidth reasons) and so the animation should be smoothed out on the front end.
 - We need to make a custom SocketCluster codec specifically for this game engine to compress all outgoing messages to be as small as possible. Right now it's just using a general-purpose binary compression codec for SC - We should add another codec layer on top of this.
-- Players can currently move and interact with one another even if they are sitting in different cells of our game grid but this may need further improvement. If you pay close attention, you may occasionally notice a bit of choppiness when one player pushes another player across a cell boundary. The logic to allow states to seamlessly transition across cells is quite complex and can always be improved more (and be made more efficient).
