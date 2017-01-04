@@ -92,3 +92,15 @@ It's still very early for this project, here are some things that still need imp
 - The front end needs some sort of motion smoothing since we don't want to set the WORLD_UPDATE_INTERVAL too high (for bandwidth reasons) and so the animation should be smoothed out on the front end.
 - The front end needs an overall cleanup; maybe we need to move the core logic outside of index.html into its own .js file... And maybe we can start using the import statement (https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import) to load dependencies?
 - We need to make a custom SocketCluster codec specifically for this game engine to compress all outgoing messages to be as small as possible. Right now it's just using a general-purpose binary compression codec for SC - We should add another codec layer on top of this.
+
+## License
+
+(The MIT License)
+
+Copyright (c) 2013-2016 SocketCluster.io
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the 'Software'), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
