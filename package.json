@@ -1,5 +1,5 @@
 {
-  "name": "sc-phaser-sample-game",
+  "name": "iogrid-game",
   "description": "A simple demo built using SocketCluster and Phaser",
   "version": "2.0.0",
   "dependencies": {
@@ -24,7 +24,9 @@
     "phaser",
     "realtime",
     "multiplayer",
-    "game"
+    "game",
+    "iogrid",
+    "iogame"
   ],
   "readmeFilename": "README.md"
 }
