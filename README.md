@@ -1,8 +1,6 @@
 SocketCluster Phaser Sample
 ======
 
-<img alt="Screen recording" src="public/img/sc-phaser.gif" title="IO Grid" />
-
 This is an IO game engine built using SocketCluster and Phaser.
 It is designed to scale across multiple processes to make use of all CPU cores on a machine.
 
@@ -18,6 +16,8 @@ With this approach, you should be able to build very large worlds which can host
 If you've built a game using this engine, feel free to contribute back to this repo.
 Also, feel free to get in touch with me directly by email (in my GitHub profile) if you'd like to chat, have feedback,
 need advice or need help with a project.
+
+<img alt="Screen recording" src="public/img/sc-phaser.gif" title="IO Grid" />
 
 Special thanks to the Percepts and Concepts Laboratory at Indiana University (http://cognitrn.psych.indiana.edu/) for sponsoring this project.
 
