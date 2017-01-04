@@ -2,6 +2,7 @@ IOGrid
 ======
 
 IOGrid is an IO game engine/framework built using SocketCluster and Phaser.
+It lets you build multi-player games like Agar.io and Slither.io and also multi-player simulations/experiments for research purposes.
 It is designed to scale across multiple processes to make use of all CPU cores on a machine.
 
 The game world is divided into cells which will be distributed across available SC worker processes.
