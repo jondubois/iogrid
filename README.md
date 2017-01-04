@@ -21,7 +21,7 @@ Special thanks to the Percepts and Concepts Laboratory at Indiana University (ht
 
 Jon
 
-<img alt="Screen recording" src="master/public/img/sc-phaser.gif" title="IO Grid" />
+<img alt="Screen recording" src="public/img/sc-phaser.gif" title="IO Grid" />
 
 ### Developing
 
