@@ -21,7 +21,7 @@ Special thanks to the Percepts and Concepts Laboratory at Indiana University (ht
 
 Jon
 
-![sc-phaser-sample](https://raw.github.com/SocketCluster/sc-phaser-sample/master/public/img/sc-phaser-sample.png)
+<img alt="Screen recording" src="master/public/img/sc-phaser.gif" title="IO Grid" />
 
 ### Developing
 
