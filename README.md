@@ -1,7 +1,7 @@
-SocketCluster Phaser Sample
+IOGrid
 ======
 
-This is an IO game engine built using SocketCluster and Phaser.
+IOGrid is an IO game engine/framework built using SocketCluster and Phaser.
 It is designed to scale across multiple processes to make use of all CPU cores on a machine.
 
 The game world is divided into cells which will be distributed across available SC worker processes.
@@ -17,7 +17,7 @@ If you've built a game using this engine, feel free to contribute back to this r
 Also, feel free to get in touch with me directly by email (in my GitHub profile) if you'd like to chat, have feedback,
 need advice or need help with a project.
 
-<img alt="Screen recording" src="public/img/sc-phaser.gif" title="IO Grid" />
+<img alt="Screen recording" src="public/img/sc-phaser.gif" title="IOGrid" />
 
 Special thanks to the Percepts and Concepts Laboratory at Indiana University (http://cognitrn.psych.indiana.edu/) for sponsoring this project.
 
@@ -34,18 +34,18 @@ To run on your machine, you need to have Node.js `v6.0.0` or higher installed.
 Then you can either clone this repo with Git using the command:
 
 ```
-git clone git@github.com:SocketCluster/sc-phaser-sample.git
+git clone git@github.com:SocketCluster/iogrid.git
 ```
 
-... Or you can download the zip: https://github.com/SocketCluster/sc-phaser-sample/archive/master.zip and extract it to a directory of your choice.
+... Or you can download the zip: https://github.com/SocketCluster/iogrid/archive/master.zip and extract it to a directory of your choice.
 
-Once you have this repo setup in a `sc-phaser-sample` directory on your machine, you need to navigate to it using the terminal and then run:
+Once you have this repo setup in a `iogrid` directory on your machine, you need to navigate to it using the terminal and then run:
 
 ```
 npm install
 ```
 
-Then (while still inside the `sc-phaser-sample` directory) you can launch the SocketCluster server using:
+Then (while still inside the `iogrid` directory) you can launch the SocketCluster server using:
 
 ```
 node server
