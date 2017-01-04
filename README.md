@@ -90,4 +90,5 @@ in such a way that your number of worker processes and total number of cells sha
 It's still very early for this project, here are some things that still need improving:
 
 - The front end needs some sort of motion smoothing since we don't want to set the WORLD_UPDATE_INTERVAL too high (for bandwidth reasons) and so the animation should be smoothed out on the front end.
+- The front end needs an overall cleanup; maybe we need to move the core logic outside of index.html into its own .js file... And maybe we can start using the import statement (https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import) to load dependencies?
 - We need to make a custom SocketCluster codec specifically for this game engine to compress all outgoing messages to be as small as possible. Right now it's just using a general-purpose binary compression codec for SC - We should add another codec layer on top of this.
