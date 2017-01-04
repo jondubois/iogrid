@@ -58,7 +58,7 @@ var SPECIAL_UPDATE_INTERVALS = {
 };
 
 var PLAYER_MOVE_SPEED = 10;
-var PLAYER_DIAMETER = 100;
+var PLAYER_DIAMETER = 45;
 var PLAYER_MASS = 20;
 
 // Note that the number of bots needs to be either 0 or a multiple of the number of
@@ -67,7 +67,7 @@ var BOT_COUNT = 10;
 var BOT_MOVE_SPEED = 5;
 var BOT_MASS = 10;
 var BOT_COLOR = 1000;
-var BOT_DIAMETER = 100;
+var BOT_DIAMETER = 45;
 var BOT_CHANGE_DIRECTION_PROBABILITY = 0.01;
 
 var COIN_UPDATE_INTERVAL = 1000;

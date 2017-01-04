@@ -52,6 +52,27 @@
         var ENVIRONMENT;
         var SERVER_WORKER_ID;
 
+        var youTexture = {
+          up: 'img/you-back.gif',
+          left: 'img/you-side-left.gif',
+          right: 'img/you-side-right.gif',
+          down: 'img/you-front.gif'
+        };
+
+        var othersTexture = {
+          up: 'img/others-back.gif',
+          left: 'img/others-side-left.gif',
+          right: 'img/others-side-right.gif',
+          down: 'img/others-front.gif'
+        };
+
+        var botTexture = {
+          up: 'img/bot-back.gif',
+          left: 'img/bot-side-left.gif',
+          right: 'img/bot-side-right.gif',
+          down: 'img/bot-front.gif'
+        };
+
         // 1 means no smoothing. 0.1 is quite smooth.
         var CAMERA_SMOOTHING = 1;
         var BACKGROUND_TEXTURE = 'img/background-texture.png';
@@ -99,6 +120,21 @@
           };
 
           game.load.image('background', BACKGROUND_TEXTURE);
+
+          game.load.image('you-up', youTexture.up);
+          game.load.image('you-down', youTexture.down);
+          game.load.image('you-right', youTexture.right);
+          game.load.image('you-left', youTexture.left);
+
+          game.load.image('others-up', othersTexture.up);
+          game.load.image('others-down', othersTexture.down);
+          game.load.image('others-right', othersTexture.right);
+          game.load.image('others-left', othersTexture.left);
+
+          game.load.image('bot-up', botTexture.up);
+          game.load.image('bot-down', botTexture.down);
+          game.load.image('bot-right', botTexture.right);
+          game.load.image('bot-left', botTexture.left);
         }
 
         function handleCellData(stateList) {
@@ -133,6 +169,12 @@
         function updateUserGraphics(user) {
           user.sprite.x = user.x;
           user.sprite.y = user.y;
+
+          if (!user.direction) {
+            user.direction = 'down';
+          }
+          user.sprite.loadTexture(user.texturePrefix + '-' + user.direction);
+
           user.label.alignTo(user.sprite, Phaser.BOTTOM_CENTER, 0, 10);
         }
 
@@ -180,6 +222,13 @@
           return sprite;
         }
 
+        function createTexturedSprite(options) {
+          var sprite = game.add.sprite(0, 0, options.texture);
+          sprite.anchor.setTo(0.5);
+
+          return sprite;
+        }
+
         function createUserSprite(userData) {
           var user = {};
           users[userData.id] = user;
@@ -196,14 +245,28 @@
           user.label = game.add.text(0, 0, user.name, textStyle);
           user.label.anchor.set(0.5);
 
-          var circle = createCircleSprite({
-            diameter: userData.width,
-            color: userData.color
-          });
+          var sprite;
 
-          user.color = userData.color;
+          if (userData.id == playerId) {
+            sprite = createTexturedSprite({
+              texture: 'you-down'
+            });
+            user.texturePrefix = 'you';
+          } else if (userData.subtype == 'bot') {
+            sprite = createTexturedSprite({
+              texture: 'bot-down'
+            });
+            user.texturePrefix = 'bot';
+          } else {
+            sprite = createTexturedSprite({
+              texture: 'others-down'
+            });
+            user.texturePrefix = 'others';
+          }
+
+          user.color = userData.color; // TODO
           user.score = userData.score;
-          user.sprite = circle;
+          user.sprite = sprite;
 
           user.width = user.sprite.width;
           user.height = user.sprite.height;
@@ -221,6 +284,7 @@
           var user = users[userData.id];
           if (user) {
             user.score = userData.score;
+            user.direction = userData.direction;
             moveUser(userData.id, userData.x, userData.y);
           } else {
             createUserSprite(userData);

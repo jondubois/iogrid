@@ -177,15 +177,19 @@ CellController.prototype.applyPlayerOps = function (playerIds, players, coins) {
 
       if (playerOp.u) {
         movementVector.y = -moveSpeed;
+        player.direction = 'up';
       }
       if (playerOp.d) {
         movementVector.y = moveSpeed;
+        player.direction = 'down';
       }
       if (playerOp.r) {
         movementVector.x = moveSpeed;
+        player.direction = 'right';
       }
       if (playerOp.l) {
         movementVector.x = -moveSpeed;
+        player.direction = 'left';
       }
 
       player.x += movementVector.x;
