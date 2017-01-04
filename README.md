@@ -12,7 +12,7 @@ per worker process at 50%.
 
 Each cell in the world has its own instance of a cell controller (`cell.js`) - Ideally, this is where you should put all your back end game logic.
 If you follow some simple structural guidelines, your code should automatically scale.
-With this approach, you should be able to build very large worlds which can host many players.
+With this approach, you should be able to build very large worlds which can host thousands of concurrent players.
 
 If you've built a game using this engine, feel free to contribute back to this repo.
 Also, feel free to get in touch with me directly by email (see my GitHub profile http://github.com/jondubois) if you'd like to chat, have feedback,
