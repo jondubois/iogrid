@@ -156,7 +156,7 @@
               }
             }
           });
-          bringPlayerToTop();
+          updatePlayerZIndexes();
         }
 
         var watchingCells = {};
@@ -185,20 +185,11 @@
           user.label.alignTo(user.sprite, Phaser.BOTTOM_CENTER, 0, 10);
         }
 
-        function bringPlayerToTop() {
-          if (player) {
-            player.label.bringToTop();
-            player.sprite.bringToTop();
-          }
-        }
-
         function moveUser(userId, x, y) {
           var user = users[userId];
           user.x = x;
           user.y = y;
           updateUserGraphics(user);
-          user.label.bringToTop();
-          user.sprite.bringToTop();
           user.clientProcessed = Date.now();
 
           if (user.id == playerId) {
@@ -270,6 +261,28 @@
             game.camera.setSize(window.innerWidth, window.innerHeight);
             game.camera.follow(user.sprite, null, CAMERA_SMOOTHING, CAMERA_SMOOTHING);
           }
+        }
+
+        function updatePlayerZIndexes() {
+          var usersArray = [];
+          for (var i in users) {
+            if (users.hasOwnProperty(i)) {
+              usersArray.push(users[i]);
+            }
+          }
+          usersArray.sort(function (a, b) {
+            if (a.y < b.y) {
+              return -1;
+            }
+            if (a.y > b.y) {
+              return 1;
+            }
+            return 0;
+          });
+          usersArray.forEach(function (user) {
+            user.label.bringToTop();
+            user.sprite.bringToTop();
+          });
         }
 
         function updateUser(userData) {

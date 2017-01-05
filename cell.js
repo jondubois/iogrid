@@ -208,6 +208,27 @@ CellController.prototype.generateBotOps = function (playerIds, players, coins) {
   });
 };
 
+CellController.prototype.keepPlayerOnGrid = function (player) {
+  var halfWidth = Math.round(player.width / 2);
+  var halfHeight = Math.round(player.height / 2);
+
+  var leftX = player.x - halfWidth;
+  var rightX = player.x + halfWidth;
+  var topY = player.y - halfHeight;
+  var bottomY = player.y + halfHeight;
+
+  if (leftX < 0) {
+    player.x = halfWidth;
+  } else if (rightX > config.WORLD_WIDTH) {
+    player.x = config.WORLD_WIDTH - halfWidth;
+  }
+  if (topY < 0) {
+    player.y = halfHeight;
+  } else if (bottomY > config.WORLD_HEIGHT) {
+    player.y = config.WORLD_HEIGHT - halfHeight;
+  }
+};
+
 CellController.prototype.applyPlayerOps = function (playerIds, players, coins) {
   var self = this;
 
@@ -260,27 +281,9 @@ CellController.prototype.applyPlayerOps = function (playerIds, players, coins) {
     if (player.playerOverlaps) {
       player.playerOverlaps.forEach(function (otherPlayer) {
         self.resolvePlayerCollision(player, otherPlayer);
+        self.keepPlayerOnGrid(otherPlayer);
       });
       delete player.playerOverlaps;
-    }
-
-    var halfWidth = Math.round(player.width / 2);
-    var halfHeight = Math.round(player.height / 2);
-
-    var leftX = player.x - halfWidth;
-    var rightX = player.x + halfWidth;
-    var topY = player.y - halfHeight;
-    var bottomY = player.y + halfHeight;
-
-    if (leftX < 0) {
-      player.x = halfWidth;
-    } else if (rightX > config.WORLD_WIDTH) {
-      player.x = config.WORLD_WIDTH - halfWidth;
-    }
-    if (topY < 0) {
-      player.y = halfHeight;
-    } else if (bottomY > config.WORLD_HEIGHT) {
-      player.y = config.WORLD_HEIGHT - halfHeight;
     }
 
     if (player.coinOverlaps) {
@@ -292,6 +295,8 @@ CellController.prototype.applyPlayerOps = function (playerIds, players, coins) {
       });
       delete player.coinOverlaps;
     }
+
+    self.keepPlayerOnGrid(player);
   });
 };
 

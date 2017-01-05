@@ -10,7 +10,11 @@ var BotManager = function (options) {
   this.worldWidth = options.worldWidth;
   this.worldHeight = options.worldHeight;
   this.botDiameter = options.botDiameter || BOT_DEFAULT_DIAMETER;
-  this.botMoveSpeed = options.botMoveSpeed || BOT_DEFAULT_SPEED;
+  if (options.botMoveSpeed == null) {
+    this.botMoveSpeed = BOT_DEFAULT_SPEED;
+  } else {
+    this.botMoveSpeed = options.botMoveSpeed;
+  }
   this.botMass = options.botMass || BOT_DEFAULT_MASS;
   this.botChangeDirectionProbability = options.botChangeDirectionProbability || BOT_DEFAULT_CHANGE_DIRECTION_PROBABILITY;
 
@@ -45,7 +49,7 @@ BotManager.prototype.addBot = function (options) {
     subtype: 'bot',
     name: options.name || 'bot-' + Math.round(Math.random() * 10000),
     score: options.score || 0,
-    speed: options.speed || this.botMoveSpeed,
+    speed: options.speed == null ? this.botMoveSpeed : options.speed,
     mass: options.mass || this.botMass,
     width: diameter,
     height: diameter,
