@@ -257,6 +257,13 @@ CellController.prototype.applyPlayerOps = function (playerIds, players, coins) {
       player.y += movementVector.y;
     }
 
+    if (player.playerOverlaps) {
+      player.playerOverlaps.forEach(function (otherPlayer) {
+        self.resolvePlayerCollision(player, otherPlayer);
+      });
+      delete player.playerOverlaps;
+    }
+
     var halfWidth = Math.round(player.width / 2);
     var halfHeight = Math.round(player.height / 2);
 
@@ -274,13 +281,6 @@ CellController.prototype.applyPlayerOps = function (playerIds, players, coins) {
       player.y = halfHeight;
     } else if (bottomY > config.WORLD_HEIGHT) {
       player.y = config.WORLD_HEIGHT - halfHeight;
-    }
-
-    if (player.playerOverlaps) {
-      player.playerOverlaps.forEach(function (otherPlayer) {
-        self.resolvePlayerCollision(player, otherPlayer);
-      });
-      delete player.playerOverlaps;
     }
 
     if (player.coinOverlaps) {

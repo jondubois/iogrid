@@ -605,9 +605,8 @@ module.exports.run = function (worker) {
           }
           workerStateRefList[swid].push(stateRef);
         }
+        state.processed = now;
       }
-
-      state.processed = now;
 
       if (state.delete) {
         if (!cellPendingDeletes[cellIndex][type]) {
