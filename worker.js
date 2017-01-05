@@ -557,15 +557,8 @@ module.exports.run = function (worker) {
       var swid = state.swid;
       var type = state.type;
 
-      if (!state.external) {
-        if (state.version) {
-          state.version++;
-          if (state.version >= Number.MAX_SAFE_INTEGER) {
-            state.version = 0;
-          }
-        } else {
-          state.version = 1;
-        }
+      if (!state.external && state.version != null) {
+        state.version++;
       }
 
       // The target cell id
@@ -574,6 +567,7 @@ module.exports.run = function (worker) {
       // For newly created states (those created from inside the cell).
       if (state.ccid == null) {
         state.ccid = cellIndex;
+        state.version = 1;
       }
       updateStateExternalTag(state, cellIndex);
 
@@ -642,14 +636,13 @@ module.exports.run = function (worker) {
     stateList.forEach(function (state) {
       var type = state.type;
       var id = state.id;
-      state.processed = Date.now();
 
       if (!currentCellData[type]) {
         currentCellData[type] = {};
       }
       var existingState = currentCellData[type][id];
 
-      if (!existingState || state.version > existingState.version || !state.version) {
+      if (!existingState || state.version > existingState.version) {
         // Do not overwrite a state which is in the middle of
         // being synchronized with a different cell.
         if (state.tcid == cellIndex) {
@@ -666,6 +659,9 @@ module.exports.run = function (worker) {
         }
         updateStateExternalTag(state, cellIndex);
       }
+
+      existingState = currentCellData[type][id];
+      existingState.processed = Date.now();
     });
   }
 
