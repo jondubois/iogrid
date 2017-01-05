@@ -18,7 +18,7 @@ If you've built a game using this engine, feel free to contribute back to this r
 Also, feel free to get in touch with me directly by email (see my GitHub profile http://github.com/jondubois) if you'd like to chat, have feedback,
 need advice or need help with a project.
 
-<img alt="Screen recording" src="public/img/sc-phaser.gif" title="IOGrid" />
+<img alt="IOGrid demo" src="public/img/iogrid.gif" title="IOGrid demo" />
 
 Special thanks to the Percepts and Concepts Laboratory at Indiana University (http://cognitrn.psych.indiana.edu/) for sponsoring this project.
 
