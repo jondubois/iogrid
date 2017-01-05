@@ -6,8 +6,8 @@ It lets you build multi-player games like Agar.io and Slither.io and also multi-
 It is designed to scale across multiple processes to make use of all CPU cores on a machine.
 
 The game world is divided into cells which will be distributed across available SC worker processes.
-Basic initial tests indicate that this engine can scale linearly across available CPU cores - We've found that doubling
-the number of worker processes allowed us to handle approximately double the number of bots whilst maintaining the average CPU usage
+Basic initial tests indicate that this engine can scale linearly across available CPU cores - I've found that doubling
+the number of worker processes allowed the engine to handle approximately double the number of bots whilst maintaining the average CPU usage
 per worker process at 50%.
 
 Each cell in the world has its own instance of a cell controller (`cell.js`) - Ideally, this is where you should put all your back end game logic.

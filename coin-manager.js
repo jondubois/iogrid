@@ -19,7 +19,6 @@ var CoinManager = function (options) {
   this.playerNoDropRadius = options.playerNoDropRadius;
   this.coinMaxCount = options.coinMaxCount;
   this.coinDropInterval = options.coinDropInterval;
-  this.coinRadius = options.coinRadius || COIN_DEFAULT_RADIUS;
 
   this.coins = {};
   this.coinCount = 0;
@@ -61,14 +60,15 @@ CoinManager.prototype.generateRandomAvailablePosition = function (coinRadius) {
   return position;
 };
 
-CoinManager.prototype.addCoin = function (value, radius) {
-  radius = radius || this.coinRadius;
+CoinManager.prototype.addCoin = function (value, subtype, radius) {
+  radius = radius || COIN_DEFAULT_RADIUS;
   var coinId = uuid.v4();
   var validPosition = this.generateRandomAvailablePosition(radius);
   if (validPosition) {
     var coin = {
       id: coinId,
       type: 'coin',
+      t: subtype || 1,
       v: value || COIN_DEFAULT_VALUE,
       r: radius,
       x: validPosition.x,

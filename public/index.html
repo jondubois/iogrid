@@ -52,25 +52,33 @@
         var ENVIRONMENT;
         var SERVER_WORKER_ID;
 
-        var youTexture = {
+        var youTextures = {
           up: 'img/you-back.gif',
           left: 'img/you-side-left.gif',
           right: 'img/you-side-right.gif',
           down: 'img/you-front.gif'
         };
 
-        var othersTexture = {
+        var othersTextures = {
           up: 'img/others-back.gif',
           left: 'img/others-side-left.gif',
           right: 'img/others-side-right.gif',
           down: 'img/others-front.gif'
         };
 
-        var botTexture = {
+        var botTextures = {
           up: 'img/bot-back.gif',
           left: 'img/bot-side-left.gif',
           right: 'img/bot-side-right.gif',
           down: 'img/bot-front.gif'
+        };
+
+        // Map the score value to the texture.
+        var grassTextures = {
+          1: 'img/grass-1.gif',
+          2: 'img/grass-2.gif',
+          3: 'img/grass-3.gif',
+          4: 'img/grass-4.gif'
         };
 
         // 1 means no smoothing. 0.1 is quite smooth.
@@ -105,12 +113,6 @@
           });
         });
 
-        function getRandomColor(min) {
-          var max = 255;
-          var randomness = max - min;
-          return min + Math.round(Math.random() * randomness);
-        }
-
         function preload() {
           keys = {
             up: game.input.keyboard.addKey(Phaser.Keyboard.UP),
@@ -121,20 +123,25 @@
 
           game.load.image('background', BACKGROUND_TEXTURE);
 
-          game.load.image('you-up', youTexture.up);
-          game.load.image('you-down', youTexture.down);
-          game.load.image('you-right', youTexture.right);
-          game.load.image('you-left', youTexture.left);
+          game.load.image('you-up', youTextures.up);
+          game.load.image('you-down', youTextures.down);
+          game.load.image('you-right', youTextures.right);
+          game.load.image('you-left', youTextures.left);
 
-          game.load.image('others-up', othersTexture.up);
-          game.load.image('others-down', othersTexture.down);
-          game.load.image('others-right', othersTexture.right);
-          game.load.image('others-left', othersTexture.left);
+          game.load.image('others-up', othersTextures.up);
+          game.load.image('others-down', othersTextures.down);
+          game.load.image('others-right', othersTextures.right);
+          game.load.image('others-left', othersTextures.left);
 
-          game.load.image('bot-up', botTexture.up);
-          game.load.image('bot-down', botTexture.down);
-          game.load.image('bot-right', botTexture.right);
-          game.load.image('bot-left', botTexture.left);
+          game.load.image('bot-up', botTextures.up);
+          game.load.image('bot-down', botTextures.down);
+          game.load.image('bot-right', botTextures.right);
+          game.load.image('bot-left', botTextures.left);
+
+          game.load.image('grass-1', grassTextures[1]);
+          game.load.image('grass-2', grassTextures[2]);
+          game.load.image('grass-3', grassTextures[3]);
+          game.load.image('grass-4', grassTextures[4]);
         }
 
         function handleCellData(stateList) {
@@ -208,20 +215,6 @@
           }
         }
 
-        function createCircleSprite(options) {
-          var graphics = new Phaser.Graphics(game);
-
-          graphics.beginFill(options.color);
-          graphics.drawCircle(0, 0, options.diameter);
-          graphics.endFill();
-          var texture = graphics.generateTexture();
-
-          var sprite = game.add.sprite(0, 0, texture);
-          sprite.anchor.setTo(0.5);
-
-          return sprite;
-        }
-
         function createTexturedSprite(options) {
           var sprite = game.add.sprite(0, 0, options.texture);
           sprite.anchor.setTo(0.5);
@@ -238,7 +231,7 @@
 
           var textStyle = {
             font: '16px Arial',
-            fill: '#000000',
+            fill: '#666666',
             align: 'center'
           };
 
@@ -264,7 +257,6 @@
             user.texturePrefix = 'others';
           }
 
-          user.color = userData.color; // TODO
           user.score = userData.score;
           user.sprite = sprite;
 
@@ -305,9 +297,8 @@
           } else {
             var coin = coinData;
             coins[coinData.id] = coin;
-            coin.sprite = createCircleSprite({
-              diameter: coinData.r * 2,
-              color: Phaser.Color.hexToRGB('#FFBB00')
+            coin.sprite = createTexturedSprite({
+              texture: 'grass-' + (coinData.t || '1')
             });
             coin.sprite.x = coinData.x;
             coin.sprite.y = coinData.y;
@@ -322,12 +313,10 @@
 
           // Generate a random name for the user.
           var playerName = 'user-' + Math.round(Math.random() * 10000);
-          var playerColor = Phaser.Color.getColor(getRandomColor(100), getRandomColor(100), getRandomColor(100));
 
           function joinWorld() {
             socket.emit('join', {
               name: playerName,
-              color: playerColor
             }, function (err, playerData) {
               playerId = playerData.id;
               updateCellWatchers(playerData, 'cell-data', handleCellData);

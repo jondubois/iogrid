@@ -36,8 +36,10 @@
   See the groupWith() function near the bottom of this file for details.
 */
 
+var _ = require('lodash');
 var rbush = require('rbush');
 var SAT = require('sat');
+var config = require('./config');
 var BotManager = require('./bot-manager').BotManager;
 var CoinManager = require('./coin-manager').CoinManager;
 
@@ -45,26 +47,36 @@ var CoinManager = require('./coin-manager').CoinManager;
 // cell in our world grid.
 
 var CellController = function (options) {
+  var self = this;
+
   this.options = options;
   this.cellIndex = options.cellIndex;
+
+  this.worldColCount = Math.ceil(config.WORLD_WIDTH / config.WORLD_CELL_WIDTH);
+  this.worldRowCount = Math.ceil(config.WORLD_HEIGHT / config.WORLD_CELL_HEIGHT);
+  this.worldCellCount = this.worldColCount * this.worldRowCount;
+  this.workerCount = options.worker.options.workers;
+
+  this.coinMaxCount = Math.round(config.COIN_MAX_COUNT / this.worldCellCount);
+  this.coinDropInterval = config.COIN_DROP_INTERVAL * this.worldCellCount;
+  this.botCount = Math.round(config.BOT_COUNT / this.worldCellCount);
 
   var cellData = options.cellData;
 
   this.botManager = new BotManager({
-    worldWidth: options.worldWidth,
-    worldHeight: options.worldHeight,
-    botDiameter: options.botDiameter,
-    botMoveSpeed: options.botMoveSpeed,
-    botMass: options.botMass,
-    botColor: options.botColor,
-    botChangeDirectionProbability: options.botChangeDirectionProbability
+    worldWidth: config.WORLD_WIDTH,
+    worldHeight: config.WORLD_HEIGHT,
+    botDiameter: config.BOT_DIAMETER,
+    botMoveSpeed: config.BOT_MOVE_SPEED,
+    botMass: config.BOT_MASS,
+    botChangeDirectionProbability: config.BOT_CHANGE_DIRECTION_PROBABILITY
   });
 
   if (!cellData.player) {
     cellData.player = {};
   }
 
-  for (var b = 0; b < options.botCount; b++) {
+  for (var b = 0; b < this.botCount; b++) {
     var bot = this.botManager.addBot();
     cellData.player[bot.id] = bot;
   }
@@ -79,12 +91,31 @@ var CellController = function (options) {
   this.coinManager = new CoinManager({
     cellData: options.cellData,
     cellBounds: options.cellBounds,
-    playerNoDropRadius: options.coinPlayerNoDropRadius,
-    coinMaxCount: options.coinMaxCount,
-    coinDropInterval: options.coinDropInterval,
-    coinRadius: options.coinRadius
+    playerNoDropRadius: config.COIN_PLAYER_NO_DROP_RADIUS,
+    coinMaxCount: this.coinMaxCount,
+    coinDropInterval: this.coinDropInterval
   });
+
   this.lastCoinDrop = 0;
+
+  config.COIN_TYPES.sort(function (a, b) {
+    if (a.probability < b.probability) {
+      return -1;
+    }
+    if (a.probability > b.probability) {
+      return 1;
+    }
+    return 0;
+  });
+
+  this.coinTypes = [];
+  var probRangeStart = 0;
+  config.COIN_TYPES.forEach(function (coinType) {
+    var coinTypeClone = _.cloneDeep(coinType);
+    coinTypeClone.prob = probRangeStart;
+    self.coinTypes.push(coinTypeClone);
+    probRangeStart += coinType.probability;
+  });
 
   this.playerCompareFn = function (a, b) {
     if (a.id < b.id) {
@@ -95,6 +126,8 @@ var CellController = function (options) {
     }
     return 0;
   };
+
+  this.diagonalSpeedFactor = Math.sqrt(1 / 2);
 };
 
 /*
@@ -126,8 +159,25 @@ CellController.prototype.dropCoins = function (coins) {
     this.coinManager.coinCount < this.coinManager.coinMaxCount) {
 
     this.lastCoinDrop = now;
-    // Add a coin with a score value of 1 and radius of 12 pixels.
-    var coin = this.coinManager.addCoin(1, 12);
+
+    var rand = Math.random();
+    var chosenCoinType;
+
+    var numTypes = this.coinTypes.length;
+    for (var i = numTypes - 1; i >= 0; i--) {
+      var curCoinType = this.coinTypes[i];
+      if (rand >= curCoinType.prob) {
+        chosenCoinType = curCoinType;
+        break;
+      }
+    }
+
+    if (!chosenCoinType) {
+      throw new Error('There is something wrong with the coin probability distribution. ' +
+        'Check that probabilities add up to 1 in COIN_TYPES config option.');
+    }
+
+    var coin = this.coinManager.addCoin(chosenCoinType.value, chosenCoinType.type, chosenCoinType.radius);
     if (coin) {
       coins[coin.id] = coin;
     }
@@ -144,8 +194,8 @@ CellController.prototype.generateBotOps = function (playerIds, players, coins) {
     // See groupWith() method near the bottom of this file foe details.
     if (player.subtype == 'bot' && !player.external) {
       var radius = Math.round(player.width / 2);
-      var isBotOnEdge = player.x <= radius || player.x >= self.options.worldWidth - radius ||
-        player.y <= radius || player.y >= self.options.worldHeight - radius;
+      var isBotOnEdge = player.x <= radius || player.x >= config.WORLD_WIDTH - radius ||
+        player.y <= radius || player.y >= config.WORLD_HEIGHT - radius;
 
       if (Math.random() <= player.changeDirProb || isBotOnEdge) {
         var randIndex = Math.floor(Math.random() * self.botMoves.length);
@@ -169,27 +219,38 @@ CellController.prototype.applyPlayerOps = function (playerIds, players, coins) {
     if (player.subtype == 'bot') {
       moveSpeed = player.speed;
     } else {
-      moveSpeed = self.options.playerMoveSpeed;
+      moveSpeed = config.PLAYER_DEFAULT_MOVE_SPEED;
     }
 
     if (playerOp) {
       var movementVector = {x: 0, y: 0};
+      var movedHorizontally = false;
+      var movedVertically = false;
 
       if (playerOp.u) {
         movementVector.y = -moveSpeed;
         player.direction = 'up';
+        movedVertically = true;
       }
       if (playerOp.d) {
         movementVector.y = moveSpeed;
         player.direction = 'down';
+        movedVertically = true;
       }
       if (playerOp.r) {
         movementVector.x = moveSpeed;
         player.direction = 'right';
+        movedHorizontally = true;
       }
       if (playerOp.l) {
         movementVector.x = -moveSpeed;
         player.direction = 'left';
+        movedHorizontally = true;
+      }
+
+      if (movedHorizontally && movedVertically) {
+        movementVector.x *= self.diagonalSpeedFactor;
+        movementVector.y *= self.diagonalSpeedFactor;
       }
 
       player.x += movementVector.x;
@@ -206,13 +267,13 @@ CellController.prototype.applyPlayerOps = function (playerIds, players, coins) {
 
     if (leftX < 0) {
       player.x = halfWidth;
-    } else if (rightX > self.options.worldWidth) {
-      player.x = self.options.worldWidth - halfWidth;
+    } else if (rightX > config.WORLD_WIDTH) {
+      player.x = config.WORLD_WIDTH - halfWidth;
     }
     if (topY < 0) {
       player.y = halfHeight;
-    } else if (bottomY > self.options.worldHeight) {
-      player.y = self.options.worldHeight - halfHeight;
+    } else if (bottomY > config.WORLD_HEIGHT) {
+      player.y = config.WORLD_HEIGHT - halfHeight;
     }
 
     if (player.playerOverlaps) {

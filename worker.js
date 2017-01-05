@@ -11,101 +11,26 @@ var ChannelGrid = require('./public/channel-grid').ChannelGrid;
 var SAT = require('sat');
 var rbush = require('rbush');
 var scCodecMinBin = require('sc-codec-min-bin');
+
+var config = require('./config');
 var CellController = require('./cell');
 
-// Having a large world is more efficient. You can divide it up into cells
-// to split up the workload between multiple CPU cores.
-var WORLD_WIDTH = 2000;
-var WORLD_HEIGHT = 2000;
-
-// Dividing the world into tall vertical strips (instead of square cells)
-// tends to be more efficient (but this may vary depending on your use case
-// and world size).
-var WORLD_CELL_WIDTH = 500;
-var WORLD_CELL_HEIGHT = 2000;
+var WORLD_WIDTH = config.WORLD_WIDTH;
+var WORLD_HEIGHT = config.WORLD_HEIGHT;
+var WORLD_CELL_WIDTH = config.WORLD_CELL_WIDTH;
+var WORLD_CELL_HEIGHT = config.WORLD_CELL_HEIGHT;
 var WORLD_COLS = Math.ceil(WORLD_WIDTH / WORLD_CELL_WIDTH);
 var WORLD_ROWS = Math.ceil(WORLD_HEIGHT / WORLD_CELL_HEIGHT);
 var WORLD_CELLS = WORLD_COLS * WORLD_ROWS;
+var WORLD_CELL_OVERLAP_DISTANCE = config.WORLD_CELL_OVERLAP_DISTANCE;
+var WORLD_UPDATE_INTERVAL = config.WORLD_UPDATE_INTERVAL;
+var WORLD_STALE_TIMEOUT = config.WORLD_STALE_TIMEOUT;
+var SPECIAL_UPDATE_INTERVALS = config.SPECIAL_UPDATE_INTERVALS;
 
-/*
-  This allows players/states from two different cells on the grid to
-  interact with one another.
-  States from different cells will show un in your cell controller but will have a
-  special 'external' property set to true.
-  This represents the maximum distance that two states can be from one another if they
-  are in different cells and need to interact with one another.
-  A smaller value is more efficient. Since this overlap area requires coordination
-  between multiple cells.
-*/
-var WORLD_CELL_OVERLAP_DISTANCE = 150;
+var PLAYER_DIAMETER = config.PLAYER_DIAMETER;
+var PLAYER_MASS = config.PLAYER_MASS;
 
-/*
-  This is the interval (in milliseconds) within which the world updates itself.
-  It also determines the frequency at which data is broadcast to users.
-  Making this value higher will boost performance and reduce bandwidth consumption
-  but will increase lag. 20ms is actually really fast - If you add some sort of
-  motion smoothing on the front end, 50ms or higher should be more than adequate.
-*/
-var WORLD_UPDATE_INTERVAL = 20;
-
-// Delete states which have gone stale (not being updated anymore).
-var WORLD_STALE_TIMEOUT = 1000;
-
-// Coins don't move, so we will only refresh them
-// once per second.
-var SPECIAL_UPDATE_INTERVALS = {
-  1000: ['coin']
-};
-
-var PLAYER_MOVE_SPEED = 10;
-var PLAYER_DIAMETER = 45;
-var PLAYER_MASS = 20;
-
-// Note that the number of bots needs to be either 0 or a multiple of the number of
-// worker processes or else it will get rounded up/down.
-var BOT_COUNT = 10;
-var BOT_MOVE_SPEED = 5;
-var BOT_MASS = 10;
-var BOT_COLOR = 1000;
-var BOT_DIAMETER = 45;
-var BOT_CHANGE_DIRECTION_PROBABILITY = 0.01;
-
-var COIN_UPDATE_INTERVAL = 1000;
-var COIN_DROP_INTERVAL = 500;
-var COIN_RADIUS = 12;
-var COIN_MAX_COUNT = 200;
-var COIN_PLAYER_NO_DROP_RADIUS = 80;
-
-var privateProps = {
-  ccid: true,
-  tcid: true,
-  mass: true,
-  speed: true,
-  changeDirProb: true,
-  repeatOp: true,
-  swid: true,
-  processed: true,
-  groupWith: true,
-  ungroupFrom: true,
-  group: true,
-  version: true,
-  external: true
-};
-
-function genericStateTransformer(state) {
-  var clone = {};
-  Object.keys(state).forEach(function (key) {
-    if (!privateProps[key]) {
-      clone[key] = state[key];
-    }
-  });
-  return clone;
-};
-
-var OUTBOUND_STATE_TRANSFORMERS = {
-  coin: genericStateTransformer,
-  player: genericStateTransformer
-};
+var OUTBOUND_STATE_TRANSFORMERS = config.OUTBOUND_STATE_TRANSFORMERS;
 
 var CHANNEL_INBOUND_CELL_PROCESSING = 'internal/cell-processing-inbound';
 var CHANNEL_CELL_TRANSITION = 'internal/cell-transition';
@@ -132,7 +57,7 @@ module.exports.run = function (worker) {
   // to a lightweight binary format to reduce bandwidth consumption.
   // We should probably make our own codec (on top of scCodecMinBin) to compress
   // world-specific entities. For example, instead of emitting the JSON:
-  // {id: '...', width: 200, height: 200, color: 1000}
+  // {id: '...', width: 200, height: 200}
   // We could compress it down to something like: {id: '...', w: 200, h: 200, c: 1000}
   worker.scServer.setCodecEngine(scCodecMinBin);
 
@@ -221,20 +146,7 @@ module.exports.run = function (worker) {
       cellIndex: cellIndex,
       cellData: cellData[cellIndex],
       cellBounds: channelGrid.getCellBounds(cellIndex),
-      worldWidth: WORLD_WIDTH,
-      worldHeight: WORLD_HEIGHT,
-      worldUpdateInterval: WORLD_UPDATE_INTERVAL,
-      coinPlayerNoDropRadius: COIN_PLAYER_NO_DROP_RADIUS,
-      coinMaxCount: Math.round(COIN_MAX_COUNT / WORLD_CELLS),
-      coinDropInterval: COIN_DROP_INTERVAL * WORLD_CELLS,
-      botCount: Math.round(BOT_COUNT / WORLD_CELLS),
-      coinRadius: COIN_RADIUS,
-      botDiameter: BOT_DIAMETER,
-      botMoveSpeed: BOT_MOVE_SPEED,
-      botMass: BOT_MASS,
-      botColor: BOT_COLOR,
-      botChangeDirectionProbability: BOT_CHANGE_DIRECTION_PROBABILITY,
-      playerMoveSpeed: PLAYER_MOVE_SPEED
+      worker: worker
     });
 
     channelGrid.watchCellAtIndex(CHANNEL_INBOUND_CELL_PROCESSING, cellIndex, gridCellDataHandler.bind(null, cellIndex));
@@ -874,7 +786,6 @@ module.exports.run = function (worker) {
         type: 'player',
         swid: serverWorkerId,
         name: playerOptions.name,
-        color: playerOptions.color,
         x: startingPos.x,
         y: startingPos.y,
         width: PLAYER_DIAMETER,
