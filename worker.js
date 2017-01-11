@@ -578,8 +578,6 @@ module.exports.run = function (worker) {
         // Do not overwrite a state which is in the middle of
         // being synchronized with a different cell.
         if (state.tcid == cellIndex) {
-          // Previous cell id.
-          state.pcid = state.ccid;
           // This is a full transition to our current cell.
           state.ccid = cellIndex;
           currentCellData[type][id] = state;
