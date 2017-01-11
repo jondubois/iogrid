@@ -99,8 +99,7 @@ var privateProps = {
   repeatOp: true,
   swid: true,
   processed: true,
-  groupWith: true,
-  ungroupFrom: true,
+  pendingGroup: true,
   group: true,
   version: true,
   external: true

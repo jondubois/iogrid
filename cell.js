@@ -33,7 +33,7 @@
   'external' property set to true).
 
   External states should not be modified unless they are grouped together with an internal state.
-  See the groupWith() function near the bottom of this file for details.
+  See the util.groupStates() function near the bottom of this file for details.
 */
 
 var _ = require('lodash');
@@ -46,11 +46,12 @@ var CoinManager = require('./coin-manager').CoinManager;
 // This controller will be instantiated once for each
 // cell in our world grid.
 
-var CellController = function (options) {
+var CellController = function (options, util) {
   var self = this;
 
   this.options = options;
   this.cellIndex = options.cellIndex;
+  this.util = util;
 
   this.worldColCount = Math.ceil(config.WORLD_WIDTH / config.WORLD_CELL_WIDTH);
   this.worldRowCount = Math.ceil(config.WORLD_HEIGHT / config.WORLD_CELL_HEIGHT);
@@ -191,7 +192,7 @@ CellController.prototype.generateBotOps = function (playerIds, players, coins) {
     var player = players[playerId];
     // States which are external are managed by a different cell, therefore changes made to these
     // states are not saved unless they are grouped with one or more internal states from the current cell.
-    // See groupWith() method near the bottom of this file foe details.
+    // See util.groupStates() method near the bottom of this file for details.
     if (player.subtype == 'bot' && !player.external) {
       var radius = Math.round(player.width / 2);
       var isBotOnEdge = player.x <= radius || player.x >= config.WORLD_WIDTH - radius ||
@@ -396,13 +397,13 @@ CellController.prototype.resolvePlayerCollision = function (player, otherPlayer)
 
     /*
       Whenever we have one state affecting the (x, y) coordinates of
-      another state, we should group them together using the groupWith() method.
+      another state, we should group them together using the util.groupStates() function.
       Otherwise we will may get flicker when the two states interact across
       a cell boundary.
-      In this case, if we don't use groupWith(), there will be flickering when you
+      In this case, if we don't use groupStates(), there will be flickering when you
       try to push another player across to a different cell.
     */
-    player.groupWith(otherPlayer);
+    this.util.groupStates([player, otherPlayer]);
   }
 };
 

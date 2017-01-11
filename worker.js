@@ -8,6 +8,7 @@ var healthChecker = require('sc-framework-health-check');
 var StateManager = require('./state-manager').StateManager;
 var uuid = require('uuid');
 var ChannelGrid = require('./public/channel-grid').ChannelGrid;
+var Util = require('./util').Util;
 var SAT = require('sat');
 var rbush = require('rbush');
 var scCodecMinBin = require('sc-codec-min-bin');
@@ -132,6 +133,10 @@ module.exports.run = function (worker) {
   var cellPendingDeletes = {};
   var cellExternalStates = {};
 
+  var util = new Util({
+    cellData: cellData
+  });
+
   var cellControllers = {};
   var updateIntervals = {};
   var cellSpecialIntervalTypes = {};
@@ -147,7 +152,7 @@ module.exports.run = function (worker) {
       cellData: cellData[cellIndex],
       cellBounds: channelGrid.getCellBounds(cellIndex),
       worker: worker
-    });
+    }, util);
 
     channelGrid.watchCellAtIndex(CHANNEL_INBOUND_CELL_PROCESSING, cellIndex, gridCellDataHandler.bind(null, cellIndex));
     channelGrid.watchCellAtIndex(CHANNEL_CELL_TRANSITION, cellIndex, gridCellTransitionHandler.bind(null, cellIndex));
@@ -294,73 +299,6 @@ module.exports.run = function (worker) {
     return groupMap;
   }
 
-  function groupHasLessThanNMembers(groupMembers, n) {
-    var count = 0;
-    var hasLessThanN = true;
-
-    for (var memberId in groupMembers) {
-      if (groupMembers.hasOwnProperty(memberId)) {
-        if (++count >= n) {
-          hasLessThanN = false;
-          break;
-        }
-      }
-    }
-    return hasLessThanN;
-  }
-
-  function groupStateWith(partnerState) {
-    if (!this.external) {
-      if (!this.pendingGroup) {
-        this.pendingGroup = {};
-      }
-      this.pendingGroup[this.id] = this;
-      this.pendingGroup[partnerState.id] = partnerState;
-    }
-
-    if (!partnerState.external) {
-      if (!partnerState.pendingGroup) {
-        partnerState.pendingGroup = {};
-      }
-      partnerState.pendingGroup[this.id] = this;
-      partnerState.pendingGroup[partnerState.id] = partnerState;
-    }
-  }
-
-  function ungroupStateFrom(partnerState) {
-    if (!this.external && this.pendingGroup) {
-      delete this.pendingGroup[partnerState.id];
-      // It's not a group if it has only itself as a member.
-      if (groupHasLessThanNMembers(this.pendingGroup, 2)) {
-        delete this.pendingGroup;
-      }
-    }
-    if (!partnerState.external && partnerState.pendingGroup) {
-      delete partnerState.pendingGroup[this.id];
-      if (groupHasLessThanNMembers(partnerState.pendingGroup, 2)) {
-        delete partnerState.pendingGroup;
-      }
-    }
-  }
-
-  function ungroupStateFromAll() {
-    var self = this;
-
-    var groupMembers = this.pendingGroup || {};
-    Object.keys(groupMembers).forEach(function (memberId) {
-      var cellIndex = self.ccid;
-      var type = self.type;
-
-      var memberSimpleState = groupMembers[memberId];
-      if (cellData[cellIndex] && cellData[cellIndex][type]) {
-        var memberState = cellData[cellIndex][type][memberId];
-        if (memberState) {
-          self.ungroupFrom(memberState);
-        }
-      }
-    });
-  }
-
   function prepareStatesForProcessing(cellIndex) {
     var currentCellData = cellData[cellIndex];
     var currentCellExternalStates = cellExternalStates[cellIndex];
@@ -376,10 +314,6 @@ module.exports.run = function (worker) {
           }
           currentCellExternalStates[type][id] = _.cloneDeep(state);
         }
-
-        state.groupWith = groupStateWith;
-        state.ungroupFrom = ungroupStateFrom;
-        state.ungroupFromAll = ungroupStateFromAll;
       });
     });
   }
@@ -432,9 +366,7 @@ module.exports.run = function (worker) {
       var cellDataStates = currentCellData[type] || {};
       Object.keys(cellDataStates).forEach(function (id) {
         var state = cellDataStates[id];
-        delete state.groupWith;
-        delete state.ungroupFrom;
-        delete state.ungroupFromAll;
+
         if (state.op) {
           delete state.op;
         }
