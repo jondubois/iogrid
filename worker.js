@@ -489,8 +489,11 @@ module.exports.run = function (worker) {
       var swid = state.swid;
       var type = state.type;
 
-      if (!state.external && state.version != null) {
-        state.version++;
+      if (!state.external) {
+        if (state.version != null) {
+          state.version++;
+        }
+        state.processed = now;
       }
 
       // The target cell id
@@ -531,7 +534,6 @@ module.exports.run = function (worker) {
           }
           workerStateRefList[swid].push(stateRef);
         }
-        state.processed = now;
       }
 
       if (state.delete) {
