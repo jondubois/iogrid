@@ -4,13 +4,13 @@ module.exports = {
   // Having a large world (lower player density) is more efficient.
   // You can divide it up into cells to split up the workload between
   // multiple CPU cores.
-  WORLD_WIDTH: 2000,
-  WORLD_HEIGHT: 2000,
+  WORLD_WIDTH: 4000,
+  WORLD_HEIGHT: 4000,
   // Dividing the world into tall vertical strips (instead of square cells)
   // tends to be more efficient (but this may vary depending on your use case
   // and world size).
-  WORLD_CELL_WIDTH: 500,
-  WORLD_CELL_HEIGHT: 2000,
+  WORLD_CELL_WIDTH: 1000,
+  WORLD_CELL_HEIGHT: 4000,
   /*
     The WORLD_CELL_OVERLAP_DISTANCE allows players/states from two different
     cells on the grid to interact with one another.
