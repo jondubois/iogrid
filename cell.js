@@ -389,7 +389,6 @@ CellController.prototype.resolvePlayerCollision = function (player, otherPlayer)
     var playerBuff = player.mass / totalMass;
     var otherPlayerBuff = otherPlayer.mass / totalMass;
 
-
     player.x -= olv.x * otherPlayerBuff;
     player.y -= olv.y * otherPlayerBuff;
     otherPlayer.x += olv.x * playerBuff;
