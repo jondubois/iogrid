@@ -9,7 +9,6 @@ var BOT_DEFAULT_CHANGE_DIRECTION_PROBABILITY = 0.01;
 var BotManager = function (options) {
   this.worldWidth = options.worldWidth;
   this.worldHeight = options.worldHeight;
-  this.botDiameter = options.botDiameter || BOT_DEFAULT_DIAMETER;
   if (options.botMoveSpeed == null) {
     this.botMoveSpeed = BOT_DEFAULT_SPEED;
   } else {
@@ -17,6 +16,7 @@ var BotManager = function (options) {
   }
   this.botMass = options.botMass || BOT_DEFAULT_MASS;
   this.botChangeDirectionProbability = options.botChangeDirectionProbability || BOT_DEFAULT_CHANGE_DIRECTION_PROBABILITY;
+  this.botDefaultDiameter = options.botDefaultDiameter || BOT_DEFAULT_DIAMETER;
 
   this.botMoves = [
     {u: 1},
@@ -39,7 +39,7 @@ BotManager.prototype.addBot = function (options) {
   if (!options) {
     options = {};
   }
-  var diameter = this.botDiameter;
+  var diameter = options.diam || this.botDefaultDiameter;
   var radius = Math.round(diameter / 2);
   var botId = uuid.v4();
 
@@ -51,8 +51,7 @@ BotManager.prototype.addBot = function (options) {
     score: options.score || 0,
     speed: options.speed == null ? this.botMoveSpeed : options.speed,
     mass: options.mass || this.botMass,
-    width: diameter,
-    height: diameter,
+    diam: diameter,
     changeDirProb: this.botChangeDirectionProbability,
     op: {}
   };

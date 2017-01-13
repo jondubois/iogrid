@@ -715,8 +715,7 @@ module.exports.run = function (worker) {
         name: playerOptions.name,
         x: startingPos.x,
         y: startingPos.y,
-        width: PLAYER_DIAMETER,
-        height: PLAYER_DIAMETER,
+        diam: PLAYER_DIAMETER,
         mass: PLAYER_MASS,
         score: 0
       };

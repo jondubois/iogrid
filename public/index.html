@@ -92,7 +92,7 @@
           WORLD_ROWS = data.rows;
           WORLD_CELL_WIDTH = data.cellWidth;
           WORLD_CELL_HEIGHT = data.cellHeight;
-          WORLD_CELL_OVERLAP_DISTANCE = data.cellOverlapDistance
+          WORLD_CELL_OVERLAP_DISTANCE = data.cellOverlapDistance;
           SERVER_WORKER_ID = data.serverWorkerId;
           ENVIRONMENT = data.environment;
 
@@ -251,8 +251,9 @@
           user.score = userData.score;
           user.sprite = sprite;
 
-          user.width = user.sprite.width;
-          user.height = user.sprite.height;
+          user.sprite.width = Math.round(userData.diam * 0.75);
+          user.sprite.height = userData.diam;
+          user.diam = user.sprite.width;
 
           moveUser(userData.id, userData.x, userData.y);
 

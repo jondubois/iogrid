@@ -67,7 +67,7 @@ var CellController = function (options, util) {
   this.botManager = new BotManager({
     worldWidth: config.WORLD_WIDTH,
     worldHeight: config.WORLD_HEIGHT,
-    botDiameter: config.BOT_DIAMETER,
+    botDefaultDiameter: config.BOT_DEFAULT_DIAMETER,
     botMoveSpeed: config.BOT_MOVE_SPEED,
     botMass: config.BOT_MASS,
     botChangeDirectionProbability: config.BOT_CHANGE_DIRECTION_PROBABILITY
@@ -194,7 +194,7 @@ CellController.prototype.generateBotOps = function (playerIds, players, coins) {
     // states are not saved unless they are grouped with one or more internal states from the current cell.
     // See util.groupStates() method near the bottom of this file for details.
     if (player.subtype == 'bot' && !player.external) {
-      var radius = Math.round(player.width / 2);
+      var radius = Math.round(player.diam / 2);
       var isBotOnEdge = player.x <= radius || player.x >= config.WORLD_WIDTH - radius ||
         player.y <= radius || player.y >= config.WORLD_HEIGHT - radius;
 
@@ -210,23 +210,22 @@ CellController.prototype.generateBotOps = function (playerIds, players, coins) {
 };
 
 CellController.prototype.keepPlayerOnGrid = function (player) {
-  var halfWidth = Math.round(player.width / 2);
-  var halfHeight = Math.round(player.height / 2);
+  var radius = Math.round(player.diam / 2);
 
-  var leftX = player.x - halfWidth;
-  var rightX = player.x + halfWidth;
-  var topY = player.y - halfHeight;
-  var bottomY = player.y + halfHeight;
+  var leftX = player.x - radius;
+  var rightX = player.x + radius;
+  var topY = player.y - radius;
+  var bottomY = player.y + radius;
 
   if (leftX < 0) {
-    player.x = halfWidth;
+    player.x = radius;
   } else if (rightX > config.WORLD_WIDTH) {
-    player.x = config.WORLD_WIDTH - halfWidth;
+    player.x = config.WORLD_WIDTH - radius;
   }
   if (topY < 0) {
-    player.y = halfHeight;
+    player.y = radius;
   } else if (bottomY > config.WORLD_HEIGHT) {
-    player.y = config.WORLD_HEIGHT - halfHeight;
+    player.y = config.WORLD_HEIGHT - radius;
   }
 };
 
@@ -353,7 +352,7 @@ CellController.prototype.findPlayerOverlaps = function (playerIds, players, coin
 };
 
 CellController.prototype.generateHitArea = function (target) {
-  var targetRadius = target.r || Math.round(target.width / 2);
+  var targetRadius = target.r || Math.round(target.diam / 2);
   return {
     target: target,
     minX: target.x - targetRadius,
@@ -364,8 +363,8 @@ CellController.prototype.generateHitArea = function (target) {
 };
 
 CellController.prototype.testCircleCollision = function (a, b) {
-  var radiusA = a.r || Math.round(a.width / 2);
-  var radiusB = b.r || Math.round(b.width / 2);
+  var radiusA = a.r || Math.round(a.diam / 2);
+  var radiusB = b.r || Math.round(b.diam / 2);
 
   var circleA = new SAT.Circle(new SAT.Vector(a.x, a.y), radiusA);
   var circleB = new SAT.Circle(new SAT.Vector(b.x, b.y), radiusB);
