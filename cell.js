@@ -5,14 +5,18 @@
   The tree is a simple JSON object and needs to be in the format:
 
     {
+      // player is a state type.
       player: {
         // ...
       },
+      // You can add other custom state types.
       someType: {
+        // Use the state id as the key (in the place of someId).
+        // It is recommended that you use a random uuid as the state id.
         someId: {
           // All properties listed here are required.
           // You can add additional ones.
-          id: theValueOfSomeId,
+          id: someId,
           type: theValueOfSomeType,
           x: someXCoordinateWithinOurCurrentCell,
           y: someYCoordinateWithinOurCurrentCell,
@@ -23,17 +27,21 @@
       }
     }
 
-  You can add new type structures, new properties and new items to the cellData
-  as you like. So long as you follow the structure above, the items should show
+  You can add new type subtrees, new states and new properties to the cellData
+  as you like. So long as you follow the structure above, the items will show
   up on the front end in the relevant cell in our world (see the handleCellData function in index.html).
-  See how CoinManager was implemented for details of how to add items within the cell.
+
+  Adding new items to the cell is easy.
+  For example, to add a new coin to the cell, you just need to add a state object to the coin subtree (E.g):
+  cellData.coin[coin.id] = coin;
+
+  See how coinManager.addCoin is used below (and how it's implemented) for more details.
 
   Note that states which are close to our current cell (based on WORLD_CELL_OVERLAP_DISTANCE)
   but not exactly inside it will still be visible within this cell (they will have an additional
   'external' property set to true).
 
-  External states should not be modified unless they are grouped together with an internal state.
-  See the util.groupStates() function near the bottom of this file for details.
+  External states should not be modified because they belong to a different cell and the change will be ignored.
 */
 
 var _ = require('lodash');
