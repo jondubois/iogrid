@@ -64,7 +64,7 @@ var CellController = function (options, util) {
   // You can use the exchange object to publish data to global channels which you
   // can watch on the front end (in index.html).
   // The API for the exchange object is here: http://socketcluster.io/#!/docs/api-exchange
-  // For info on how to watch channels on the front end, read about subscribe and watch
+  // To receive channel data on the front end, you can read about the subscribe and watch
   // functions here: http://socketcluster.io/#!/docs/basic-usage
   this.exchange = options.worker.exchange;
 
