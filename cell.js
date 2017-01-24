@@ -11,15 +11,15 @@
       },
       // You can add other custom state types.
       someType: {
-        // Use the state id as the key (in the place of someId).
-        // It is recommended that you use a random uuid as the state id.
+        // Use the id as the key (in the place of someId).
+        // It is recommended that you use a random uuid as the state id. See https://www.npmjs.com/package/uuid
         someId: {
           // All properties listed here are required.
           // You can add additional ones.
           id: someId,
-          type: theValueOfSomeType,
-          x: someXCoordinateWithinOurCurrentCell,
-          y: someYCoordinateWithinOurCurrentCell,
+          type: someType,
+          x: someXCoordinate,
+          y: someYCoordinate,
         },
         anotherId: {
           // ...
