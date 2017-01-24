@@ -14,7 +14,7 @@ module.exports = {
   /*
     The WORLD_CELL_OVERLAP_DISTANCE allows players/states from two different
     cells on the grid to interact with one another.
-    States from different cells will show un in your cell controller but will have a
+    States from different cells will show up in your cell controller but will have a
     special 'external' property set to true.
     This represents the maximum distance that two states can be from one another if they
     are in different cells and need to interact with one another.
