@@ -61,6 +61,13 @@ var CellController = function (options, util) {
   this.cellIndex = options.cellIndex;
   this.util = util;
 
+  // You can use the exchange object to publish data to global channels which you
+  // can watch on the front end (in index.html).
+  // The API for the exchange object is here: http://socketcluster.io/#!/docs/api-exchange
+  // For info on how to watch channels on the front end, read about subscribe and watch
+  // functions here: http://socketcluster.io/#!/docs/basic-usage
+  this.exchange = options.worker.exchange;
+
   this.worldColCount = Math.ceil(config.WORLD_WIDTH / config.WORLD_CELL_WIDTH);
   this.worldRowCount = Math.ceil(config.WORLD_HEIGHT / config.WORLD_CELL_HEIGHT);
   this.worldCellCount = this.worldColCount * this.worldRowCount;
