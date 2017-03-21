@@ -52,17 +52,15 @@ Then (while still inside the `iogrid` directory) you can launch the SocketCluste
 node server
 ```
 
-To run the demo, navigate to `http://localhost:8000` in a browser - You should see a single colored circle which you can move around
-using the arrow keys.
+To run the demo, navigate to `http://localhost:8000` in a browser - You should see a rabbit which you can move around using the arrow keys.
 
 To test the multi-player functionality from your localhost:
 
-Open up another browser window/tab to `http://localhost:8000` and put it side-by-side with the first window/tab - You should now
-have two colored circles - Each one can be controlled from a different tab.
+Open up another browser window/tab to `http://localhost:8000` and put it side-by-side with the first window/tab - You should now have two rabbits - Each one can be controlled from a different tab.
 
-Note that while this demo demonstrates a few important optimizations, it is still not as optimized as it can be and it's not cheat-proof.
-For production usage, among other things, you may want to setup a codec to convert your messages to binary packets when they are sent over the wire.
-You may want to use https://github.com/SocketCluster/sc-codec-min-bin or make your own.
+Note that while this demo demonstrates a few important optimizations, it can still be optimized further.
+For production usage, among other things, you may want to improve the current codec to make the packets that are sent to the client even smaller.
+You may want to build your own codec on top of https://github.com/SocketCluster/sc-codec-min-bin.
 
 If you want to run the server on port 80, you'll need to run the SocketCluster server with `sudo node server -p 80`.
 
