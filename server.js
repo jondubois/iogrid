@@ -13,7 +13,7 @@ var options = {
   brokers: Number(argv.b) || Number(process.env.SOCKETCLUSTER_BROKERS) || 1,
   port: Number(argv.p) || Number(process.env.SOCKETCLUSTER_PORT) || Number(process.env.PORT) || 8000,
   // If your system doesn't support 'uws', you can switch to 'ws' (which is slower but works on older systems).
-  wsEngine: process.env.SOCKETCLUSTER_WS_ENGINE || 'uws',
+  wsEngine: process.env.SOCKETCLUSTER_WS_ENGINE || 'ws',
   appName: argv.n || process.env.SOCKETCLUSTER_APP_NAME || null,
   workerController: workerControllerPath || __dirname + '/worker.js',
   brokerController: brokerControllerPath || __dirname + '/broker.js',
